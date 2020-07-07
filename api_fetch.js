@@ -1,22 +1,28 @@
 const {google} = require('googleapis');
 Database = require('arangojs').Database;
 
+fs = require('fs');
+
+const apiKey = fs.readFileSync('./.apiKey', 'utf8');
+const arangoPass = fs.readFileSync('./.arangoPass', 'utf8');
+
 // Initialise the database variable
+//TODO: Change accordingly for ginkgo
 db = new Database('http://127.0.0.1:8529');
-db.useBasicAuth("root", "testpassw33d");
+db.useBasicAuth("root", arangoPass);
 
 //TODO: Change accordingly for ginkgo, this also potentially goes for the 'Channels/' part in the save[...] functions
 db.useDatabase('testBase');
 channelCollection = db.collection('Channels');
-subsCollection = db.collection('subscribes_to');
-likesCollection = db.collection('likedVideos_from');
-commentsCollection = db.collection('commentedOnVideos_from');
-favoritesCollection = db.collection('favoritedVideos_from');
+subsCollection = db.collection('subscribed_by');
+likesCollection = db.collection('videosLiked_by');
+commentsCollection = db.collection('videosCommented_by');
+favoritesCollection = db.collection('videosFavorited_by');
 
 // Initialise the Youtube library with an api key
 const youtube = google.youtube({
     version: 'v3',
-    auth: 'AIzaSyD7LoMa_a3TjGBaPjWvYpqja3Ps-rdID5k' // API key
+    auth: apiKey // API key
 });
 
 // Queue class for the channelQueue
@@ -396,8 +402,8 @@ async function saveSubscription(subscription) {
 async function saveFavorite(channelId, favoritedVideo) {
     const doc = {
         _key: channelId + favoritedVideo.id + favoritedVideo.snippet.channelId,
-        _from: 'Channels/' + channelId,
-        _to: 'Channels/' + favoritedVideo.snippet.channelId,
+        _from: 'Channels/' + favoritedVideo.snippet.channelId,
+        _to: 'Channels/' + channelId,
         videoId: favoritedVideo.id,
         videoTitle: favoritedVideo.snippet.title,
         videoTags: favoritedVideo.snippet.tags
@@ -414,8 +420,8 @@ async function saveFavorite(channelId, favoritedVideo) {
 async function saveLike(channelId, likedVideo) {
     const doc = {
         _key: channelId + likedVideo.id + likedVideo.snippet.channelId,
-        _from: 'Channels/' + channelId,
-        _to: 'Channels/' + likedVideo.snippet.channelId,
+        _from: 'Channels/' + likedVideo.snippet.channelId,
+        _to: 'Channels/' + channelId,
         videoId: likedVideo.id
     };
 
@@ -430,8 +436,8 @@ async function saveLike(channelId, likedVideo) {
 async function saveComment(commentThread) {
     const doc = {
         _key: commentThread.id,
-        _from: 'Channels/' + commentThread.snippet.topLevelComment.snippet.authorChannelId.value,
-        _to: 'Channels/' + commentThread.snippet.topLevelComment.snippet.channelId,
+        _from: 'Channels/' + commentThread.snippet.topLevelComment.snippet.channelId,
+        _to: 'Channels/' + commentThread.snippet.topLevelComment.snippet.authorChannelId.value,
         videoID: commentThread.snippet.topLevelComment.snippet.videoId,
         value: commentThread.snippet.topLevelComment.snippet.textDisplay
     };
@@ -657,9 +663,9 @@ async function scheduler(seedUsers) {
 //         collectVideoIdsFromPlaylist(dat, dat2[1]).then(function (dat3) {
 //             collectVideoInfosFromIDList(dat3[0]).then(function (dat4) {
 //                 console.log(dat4.data.items[0]);
-//                 //     saveFavorite('UC2OY4ruLUWLLknZ8OG4mnsw', dat3.data.items[0]).then(function(){
-//                 //         console.log('done');
-//                 //     });
+//                      saveFavorite('UC2OY4ruLUWLLknZ8OG4mnsw', dat4.data.items[0]).then(function(){
+//                          console.log('done');
+//                      });
 //             });
 //         });
 //     });
