@@ -1,0 +1,16 @@
+{
+  "name": "ytdapi_fetch",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "arangojs": "^5.8.0",
+    "googleapis": "^52.1.0"
+  }
+}
