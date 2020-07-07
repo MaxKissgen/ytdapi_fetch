@@ -108,3 +108,4 @@ dist
 .idea/tasks.xml
 .apiKey
 .arangoPass
+RemainingChannels.txt

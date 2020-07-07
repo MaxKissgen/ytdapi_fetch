@@ -679,13 +679,13 @@ async function scheduler(seedUsers) {
 //     });
 // });
 
-//try{
-//scheduler(['UChGJGhZ9SOOHvBB0Y4DOO_w', 'UCNrInjQKQBYYWo9FjpI8F3g']);}
-//catch(err){writeFile(remainingChannels.txt, channelQueue.toString(), (error) => {
-//
-//     // In case of a error throw err exception.
-//     if (error) throw err;
-// }));}
+// try {
+//     scheduler(['UChGJGhZ9SOOHvBB0Y4DOO_w', 'UCNrInjQKQBYYWo9FjpI8F3g']);
+// } catch (err) {
+//     fs.writeFileSync("./RemainingChannels.txt", channelQueue.toString(), "utf-8");
+// }
+
+//fs.writeFileSync("./RemainingChannels.txt", channelQueue.toString(), "utf-8");
 
 //waitUntilNextDay();
 
