@@ -125,6 +125,7 @@ async function collectSubscriptions(id, pageToken) {
             "part": [
                 "snippet"
             ],
+            "order" : "relevance",
             "channelId": id,
             "maxResults": 50
         });
@@ -133,6 +134,7 @@ async function collectSubscriptions(id, pageToken) {
             "part": [
                 "snippet"
             ],
+            "order" : "relevance",
             "channelId": id,
             "pageToken": pageToken,
             "maxResults": 50
@@ -499,23 +501,26 @@ async function scheduler(seedUsers) {
 
     while (channelQueue.length !== 0) {
         channelAlready = false;
-        commentThreads = {data:{items:[]}};
+        commentThreads = {data: {items: []}};
         counter++;
 
         console.log("Collecting Channel");
 
         // Check if Channel already exists in database
-        await channelCollection.document(channelQueue.front()).then(function(doc){
+        await channelCollection.document(channelQueue.front()).then(function (doc) {
             channelAlready = true;
-
-            channel = [false,[{id: channelQueue.front()}]];
-            if(doc.statistics.subscriberCount >= 5000){
-                channel = [true,[{id: channelQueue.front()}]];
+            doc.id = channelQueue.front();
+            console.log(doc);
+            channel = [false, [doc]]; //[{id: channelQueue.front()}]
+            if (doc.statistics.subscriberCount >= 5000) {
+                channel = [true, [doc]];
+                console.log(channel[1]);
             }
 
-        }).catch(err => {});
+        }).catch(err => {
+        });
 
-        if(channelAlready === false) {
+        if (channelAlready === false) {
             //Try to collect the channel and, when quota exceeded, try again the next day
             try {
                 channel = await collectChannel(channelQueue.front());
@@ -532,12 +537,10 @@ async function scheduler(seedUsers) {
             try {
                 await saveChannel(channel);
             } catch (err) {
-                if(err.code === 409 && err.errorNum === 1210) { //Conflicting keys, meaning channel exists already
+                if (err.code === 409 && err.errorNum === 1210) { //Conflicting keys, meaning channel exists already
                     console.log("Channel was already saved - this should not have happened");
                     channelAlready = true;
-                }
-                else
-                {
+                } else {
                     console.log(err);
                 }
             }
@@ -546,62 +549,53 @@ async function scheduler(seedUsers) {
 
         console.log("Channel done");
 
-        if (channel[0] === true) // if the channel is an influencer candidate
+        if (channel[0] === true && (await channel[1][0].snippet.title).includes('Topic') === false) // if the channel is an influencer candidate
         {
 
             console.log("Collecting Comments");
 
             //Try to collect some pages with each up to 50 commentThreads related to the channel and, when quota exceeded, try again the next day
-            try {
-                let nextPage = undefined;
-                // If the channel has been visited before, then some comment pages will already exist
-                if(commentThreadPages.has(channel[1][0].id) === true) {
-                    nextPage = commentThreadPages.get(channel[1][0].id);
-                }
+            let nextPage = undefined;
+            // If the channel has been visited before, then some comment pages will already exist
+            if (commentThreadPages.has(channel[1][0].id) === true) {
+                nextPage = commentThreadPages.get(channel[1][0].id);
+            }
 
-                for (let i = 0; i < 5; i++) {
-                    try {
-                        await collectCommentThreads(channel[1][0].id, nextPage).then(function (dat) {
-                            //TODO: Maybe check for duplicates here already, theoretically though: multiple comments <=> multiple edges
-                            commentThreads.data.items.concat(dat.data.items);
-                            nextPage = dat.data.nextPageToken;
-                        });
-                    } catch (err) {
-                        if (err.code === 403 && err.errors[0].reason === "quotaExceeded") {
-                            waitUntilNextDay();
-                            commentThreads = await collectCommentThreads(channel[1][0].id, nextPage);
-                        } else if (err.code === 403 && err.errors[0].reason === "commentsDisabled") {
-                            break;
-                        } else {
-                            console.log(err);
-                        }
+            for (let i = 0; i < 5; i++) {
+                try {
+
+                    await collectCommentThreads(channel[1][0].id, nextPage).then(function (dat) {
+                        //TODO: Maybe check for duplicates here already, theoretically though: multiple comments <=> multiple edges
+
+                        commentThreads.data.items = commentThreads.data.items.concat(dat.data.items);
+
+                        nextPage = dat.data.nextPageToken;
+                    });
+                } catch (err) {
+                    if (err.code === 403 && err.errors[0].reason === "quotaExceeded") {
+                        waitUntilNextDay();
+                        commentThreads = await collectCommentThreads(channel[1][0].id, nextPage);
+                    } else if (err.code === 403 && err.errors[0].reason === "commentsDisabled") {
+                        console.log('Comments disabled')
+                        break;
+                    } else {
+                        console.log(err);
                     }
                 }
-
-                // Insert page token into comment thread map in case of revisiting later
-                commentThreadPages.set(channel[1][0].id, nextPage);
-
-            } catch (err) {
-                if (err.code === 403 && err.errors[0].reason === "quotaExceeded") {
-                    waitUntilNextDay();
-                    commentThreads = await collectCommentThreads(channel[1][0].id);
-                } else if (err.code === 403 && err.errors[0].reason === "commentsDisabled") {
-                    commentThreads = {data: {items: []}}
-                } else {
-                    console.log(err);
-                }
             }
+
+            // commentThreads = {data: {items: []}}
+            // Insert page token into comment thread map in case of revisiting later
+            commentThreadPages.set(channel[1][0].id, nextPage);
 
             // Save the top level comments of those threads
             for (let x of commentThreads.data.items) {
                 try {
                     await saveComment(x);
                 } catch (err) {
-                    if(err.code === 409 && err.errorNum === 1210) { //Conflicting keys, meaning channel exists already
-                        console.log("Comment was already saved - This should not have happened");
-                    }
-                    else
-                    {
+                    if (err.code === 409 && err.errorNum === 1210) { //Conflicting keys, meaning comment exists already
+                        console.log("Comment was already saved");
+                    } else {
                         console.log(err);
                     }
                 }
@@ -615,15 +609,15 @@ async function scheduler(seedUsers) {
 
             console.log("Comments done");
 
-        } else {
+            console.log("Collecting Subscriptions");
 
-            //Try to collect some pages with up to 50 subscriptions of the channel and, when quota exceeded, try again the next day
+            //Try to collect some pages with up to 100 subscriptions total of the channel(sorted by relevance) and, when quota exceeded, try again the next day
             try {
                 subscriptions = await collectSubscriptions(channel[1][0].id);
 
                 let nextPage = subscriptions.data.nextPageToken;
 
-                for (let i = 0; i < 4; i++) {
+                for (let i = 0; i < 2; i++) {
                     try {
                         await collectSubscriptions(channel[1][0].id, nextPage).then(function (dat) {
                             subscriptions.data.items.concat(dat.data.items);
@@ -640,7 +634,6 @@ async function scheduler(seedUsers) {
                         }
                     }
                 }
-
             } catch (err) {
                 if (err.code === 403 && err.errors[0].reason === "quotaExceeded") {
                     waitUntilNextDay();
@@ -659,11 +652,64 @@ async function scheduler(seedUsers) {
                     channelQueue.enqueue(x.snippet.resourceId.channelId);
                     await saveSubscription(x);
                 } catch (err) {
-                    if(err.code === 409 && err.errorNum === 1210) { //Conflicting keys, meaning channel exists already
+                    if (err.code === 409 && err.errorNum === 1210) { //Conflicting keys, meaning subscription exists already
                         console.log("Comment was already saved - This should not have happened");
+                    } else {
+                        console.log(err);
                     }
-                    else
-                    {
+                }
+            }
+
+            console.log('Subs done');
+
+        } else {
+
+            console.log("Collecting Subscriptions");
+
+            //Try to collect some pages with up to 100 subscriptions total of the channel(sorted by relevance) and, when quota exceeded, try again the next day
+            try {
+                subscriptions = await collectSubscriptions(channel[1][0].id);
+
+                let nextPage = subscriptions.data.nextPageToken;
+
+                for (let i = 0; i < 2; i++) {
+                    try {
+                        await collectSubscriptions(channel[1][0].id, nextPage).then(function (dat) {
+                            subscriptions.data.items.concat(dat.data.items);
+                            nextPage = dat.data.nextPageToken;
+                        });
+                    } catch (err) {
+                        if (err.code === 403 && err.errors[0].reason === "quotaExceeded") {
+                            waitUntilNextDay();
+                            commentThreads = await collectSubscriptions(channel[1][0].id, nextPage);
+                        } else if (err.code === 403 && err.errors[0].reason === "commentsDisabled") {
+                            break;
+                        } else {
+                            console.log(err);
+                        }
+                    }
+                }
+            } catch (err) {
+                if (err.code === 403 && err.errors[0].reason === "quotaExceeded") {
+                    waitUntilNextDay();
+                    subscriptions = await collectSubscriptions(channel[1][0].id);
+                } else if (err.code === 403 && err.errors[0].reason === "subscriptionForbidden") {
+                    subscriptions = {data: {items: []}};
+                } else {
+                    console.log(err)
+                }
+            }
+
+            //Save the subscriptions
+            for (let x of subscriptions.data.items) {
+                console.log("Saving Subscription " + x.id);
+                try {
+                    channelQueue.enqueue(x.snippet.resourceId.channelId);
+                    await saveSubscription(x);
+                } catch (err) {
+                    if (err.code === 409 && err.errorNum === 1210) { //Conflicting keys, meaning subscription exists already
+                        console.log("Comment was already saved - This should not have happened");
+                    } else {
                         console.log(err);
                     }
                 }
@@ -687,8 +733,7 @@ async function scheduler(seedUsers) {
 
             //Then try to collect up to 50 favorited videos of the current channel and, when quota exceeded, try again the next day
             try {
-                if(favorites !== "")
-                {
+                if (favorites !== "") {
                     favoritedVideoIds = await collectVideoIdsFromPlaylist(favorites);
                 }
             } catch (err) {
@@ -702,12 +747,10 @@ async function scheduler(seedUsers) {
 
             //Then try to collect up to 50 "favorited" channels of the current channel and, when quota exceeded, try again the next day
             try {
-                if(favorites !== "") {
+                if (favorites !== "") {
                     favoritedVideos = await collectVideoInfosFromIDList(favoritedVideoIds);
-                }
-                else
-                {
-                    favoritedVideos = {data:{items:[]}};
+                } else {
+                    favoritedVideos = {data: {items: []}};
                 }
             } catch (err) {
                 if (err.code === 403 && err.errors[0].reason === "quotaExceeded") {
@@ -724,11 +767,9 @@ async function scheduler(seedUsers) {
                     channelQueue.enqueue(x.snippet.channelId);
                     await saveFavorite(channel[1][0].id, x);
                 } catch (err) {
-                    if(err.code === 409 && err.errorNum === 1210) { //Conflicting keys, meaning channel exists already
+                    if (err.code === 409 && err.errorNum === 1210) { //Conflicting keys, meaning channel exists already
                         console.log("Favourite was already saved - This should not have happened");
-                    }
-                    else
-                    {
+                    } else {
                         console.log(err);
                     }
                 }
@@ -738,8 +779,9 @@ async function scheduler(seedUsers) {
 
         }
 
-        if(counter === 2)
-        {
+        console.log('\n' + 'REMAINING CHANNELS:' + (channelQueue.items.length - 1) + '\n');
+
+        if (counter === 250) {
             console.log('Stop tests');
             waitUntilNextDay();
         }
@@ -838,8 +880,10 @@ async function scheduler(seedUsers) {
 //     });
 // }).catch(err => console.log(err.code + "\n" + err.errors[0].reason));
 
+//, 'UCsDUx3IrrXQI0CbfKMxTCww', 'UCsDUx3IrrXQI0CbfKMxTCww', 'UCkXMf7wgQ49d3KFyWl2BXgQ', 'UChGJGhZ9SOOHvBB0Y4DOO_w', 'UCHNA1EASDBXfvwMBgWGr0vg'
+
 try {
-    scheduler(['UCsDUx3IrrXQI0CbfKMxTCww', 'UCsDUx3IrrXQI0CbfKMxTCww', 'UCkXMf7wgQ49d3KFyWl2BXgQ', 'UChGJGhZ9SOOHvBB0Y4DOO_w', 'UCHNA1EASDBXfvwMBgWGr0vg']);
+    scheduler(['UCkXMf7wgQ49d3KFyWl2BXgQ']);
 } catch (err) {
     console.log(err);
     fs.writeFileSync("./RemainingChannels.txt", channelQueue.toString(), "utf-8");
