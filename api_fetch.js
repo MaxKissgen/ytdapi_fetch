@@ -574,7 +574,7 @@ async function scheduler(seedUsers) {
 
     //TODO: Maybe also create regex to exclude popular grown-up topics or those that are usually not by child influencers
     // Regexes to filter for child influencers
-    let regExp = /\b[Ff]amily|[Pp]lay|\b[Aa]ge|\b[Cc]hild(?:dren)?\b|\b[Mm]om(?:my)?\b|\b[Mm]um\b|\b[Dd]ad(?:dy)?\b|\b[Pp]arent|\b[Dd]ress-up\b|[Tt]oy|\b[Pp]retend\b|[Yy]ears\sold|/;
+    let regExp = /\b[Ff]amily|[Pp]lay|\b[Aa]ge|\b[Cc]hild(?:dren)?\b|\b[Mm]om(?:my)?\b|\b[Mm]um\b|\b[Dd]ad(?:dy)?\b|\b[Pp]arent|\b[Dd]ress-up\b|[Tt]oy|\b[Pp]retend\b|[Yy]ears\sold|Roblox/;
     let regExpDeutsch = /\b[Ff]amilie|[Ss]piel|\bAlter\b|\bKind(?:er)?\b|\bMam(?:mi|ma)?\b|\bPap(?:pa|pi)?\b|\bEltern|\b[Vv]erkleiden\b/;
 
 
@@ -645,14 +645,12 @@ async function scheduler(seedUsers) {
         if (channel[0] === true && (await channel[1][1].snippet.title).includes('Topic') === false) // if the channel is an influencer candidate, also ignore topic channels
         {
             //Check whether channel is a potential child or has children involved and if yes, ignore that one and save it for later
-            //TODO: Finish
-            if (regExp.test(channel[1][1].snippet.description) === false && channelQueue.items.length !== 1) {
+            if (regExp.test(channel[1][1].snippet.description) === false && regExpDeutsch.test(channel[1][1].snippet.description) === false && channelQueue.items.length !== 1) {
                 console.log('Moving Channel to unlikelyChildQueue');
                 unlikelyChildQueue.enqueue(channelQueue.front());
                 channelQueue.dequeue();
                 continue;
             }
-
 
             console.log("Collecting Comments");
 
@@ -776,7 +774,7 @@ async function scheduler(seedUsers) {
                 //Then try to collect up to 50 "favorited" channels of the current channel and, when quota exceeded, try again the next day
                 try {
                     if (favoritedVideoIds !== "") {
-                        console.log('Collecting favIds: ' + favoritedVideoIds[0])
+                        //console.log('Collecting favIds: ' + favoritedVideoIds[0])
                         favoritedVideos = await collectVideoInfosFromIDList(favoritedVideoIds[0]);
                     } else {
                         favoritedVideos = {data: {items: []}};
@@ -873,17 +871,18 @@ async function scheduler(seedUsers) {
         if (saveCounter === 50) {
             saveCounter = 0;
             fs.writeFileSync("./RemainingChannels.txt", channelQueue.toString(), "utf-8");
+            fs.writeFileSync("./CommentPageTokens.txt", channelQueue.toString(), "utf-8");
         }
 
         // Debug Wait
-        if (debugCounter === 3) {
+        if (debugCounter === 250) {
             console.log('Stop tests');
             waitUntilNextDay();
         }
 
         channelQueue.dequeue();
 
-        //Fill with less "interesting" influencers if out of potential children
+        //Fill with less "interesting" influencers if out of potential children or only-subscribers
         if (channelQueue.isEmpty() === true && unlikelyChildQueue.isEmpty() === false) {
             console.log('Retrieving from unlikelyChildQueue');
             channelQueue.enqueue(unlikelyChildQueue.front());
@@ -988,10 +987,23 @@ async function scheduler(seedUsers) {
 //McClure: UCNm8WjumwijTwIVmCOLi0KQ
 
 try {
-    scheduler(['UCsDUx3IrrXQI0CbfKMxTCww', 'UCkXMf7wgQ49d3KFyWl2BXgQ', 'UChGJGhZ9SOOHvBB0Y4DOO_w', 'UCHNA1EASDBXfvwMBgWGr0vg']);
+    let channels = fs.readFileSync("./RemainingChannels.txt",'utf-8');
+
+    if(channels === "")
+    {
+        console.log('jo');
+        scheduler(['UCsDUx3IrrXQI0CbfKMxTCww', 'UCkXMf7wgQ49d3KFyWl2BXgQ', 'UChGJGhZ9SOOHvBB0Y4DOO_w', 'UCHNA1EASDBXfvwMBgWGr0vg']);
+    }
+    else
+    {
+        console.log('no');
+        scheduler(channels.split(","));
+    }
+
 } catch (err) {
     console.log(err);
     fs.writeFileSync("./RemainingChannels.txt", channelQueue.toString(), "utf-8");
+    fs.writeFileSync("./CommentPageTokens.txt", channelQueue.toString(), "utf-8");
 }
 
 
@@ -1079,8 +1091,8 @@ try {
         "Playtime with Jersey : https://www.youtube.com/channel/UCHaROGr_2_YLh25L8EhBJ-w";
 }
 
-let regExp = /\b[Ff]amily|[Pp]lay|\b[Aa]ge|\b[Cc]hild(?:dren)?\b|\b[Mm]om(?:my)?\b|\b[Dd]ad(?:dy)?\b|\b[Pp]arent|\b[Dd]ress-up\b|[Tt]oy|\b[Pp]retend\b/;
-let regExpDeutsch = /\b[Ff]amilie|[Ss]piel|\bAlter\b|\bKind(?:er)?\b|\bMam(?:mi|ma)?\b|\bPap(?:pa|pi)?\b|\bEltern|\b[Vv]erkleiden\b/;
+//let regExp = /\b[Ff]amily|[Pp]lay|\b[Aa]ge|\b[Cc]hild(?:dren)?\b|\b[Mm]om(?:my)?\b|\b[Dd]ad(?:dy)?\b|\b[Pp]arent|\b[Dd]ress-up\b|[Tt]oy|\b[Pp]retend\b/;
+//let regExpDeutsch = /\b[Ff]amilie|[Ss]piel|\bAlter\b|\bKind(?:er)?\b|\bMam(?:mi|ma)?\b|\bPap(?:pa|pi)?\b|\bEltern|\b[Vv]erkleiden\b/;
 
 // console.log(regExp.test(testString1));
 // console.log(regExp.test(testString2));
@@ -1130,8 +1142,3 @@ let regExpDeutsch = /\b[Ff]amilie|[Ss]piel|\bAlter\b|\bKind(?:er)?\b|\bMam(?:mi|
 // waitForDatabaseConnection().then(function () {
 //     console.log('Connected to Database');
 // });
-
-
-console.log('test');
-
-

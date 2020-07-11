@@ -109,3 +109,4 @@ dist
 .apiKey
 .arangoPass
 RemainingChannels.txt
+CommentPageTokens.txt
