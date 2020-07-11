@@ -71,6 +71,8 @@ class Queue {
 
 // Queue used to go through youtube channels
 let channelQueue = new Queue();
+let unlikelyChildQueue = new Queue();
+
 
 //Map to store page tokens
 let commentThreadPages = new Map();
@@ -125,7 +127,7 @@ async function collectSubscriptions(id, pageToken) {
             "part": [
                 "snippet"
             ],
-            "order" : "relevance",
+            "order": "relevance",
             "channelId": id,
             "maxResults": 50
         });
@@ -134,7 +136,7 @@ async function collectSubscriptions(id, pageToken) {
             "part": [
                 "snippet"
             ],
-            "order" : "relevance",
+            "order": "relevance",
             "channelId": id,
             "pageToken": pageToken,
             "maxResults": 50
@@ -385,7 +387,7 @@ async function saveChannel(channel) {
     await channelCollection.save(doc).then(
         meta => console.log('Channel saved:', meta._rev),
         err => {
-            throw err
+            throw err;
         }
     );
 }
@@ -476,16 +478,91 @@ function waitUntilNextDay() {
 
     console.log('Waiting until the quota is full again');
 
-    while (date.getTime() < stopTime + 86400000); //86.400.000 is all milliseconds in one day
+    while (date.getTime() < stopTime + 86400000) ; //86.400.000 is all milliseconds in one day
 
+}
+
+//Check for Connection to Youtube Data API through collecting Ryan's World
+async function waitForConnection() {
+    while (true) {
+        try {
+            await collectChannel('UChGJGhZ9SOOHvBB0Y4DOO_w');
+            break;
+        } catch (err) {
+            if (err.code === 403 && err.errors[0].reason === "quotaExceeded") {
+                break;
+            } else if (err.code !== 'ENOTFOUND') {
+                throw err;
+            }
+        }
+    }
+}
+
+//Check for Database Connection through trying to save Ryan's World
+async function waitForDatabaseConnection() {
+    while (true) {
+        try {
+            const doc = {
+                "_id": "Channels/UChGJGhZ9SOOHvBB0Y4DOO_w",
+                "_key": "UChGJGhZ9SOOHvBB0Y4DOO_w",
+                "snippet": {
+                    "title": "Ryan's World",
+                    "description": "Welcome To Ryan's World!!! Ryan loves doing lots of fun things like pretend play, science experiments, music videos, skits, challenges, DIY arts and crafts and more!!! \nMost of the toys we used to review are being donated to local charity \n\nRyan's Toys & Clothing at Walmart and Target!\n\nRyan's World \nRyan's Family Review: https://www.youtube.com/channel/UCsaOzYsyshyrYL4SHCTI8xw\nCombo Panda: https://www.youtube.com/channel/UCb69PhsHzsorirJDlxaIXlg\nGus The Gummy Gator: https://www.youtube.com/channel/UCZkSuKAy5kMnZXoxo1PrmJQ\nVTubers: https://www.youtube.com/channel/UCwOGO9gT1y0IvzPqKal4loQ\nThe Studio Space: https://www.youtube.com/channel/UCRgCbwOa1f76Ec_eRBhhezA\nFor Media Inquiries: Ryansworld@rogersandcowan.com\nFor Business Inquiries: ryantoysreviewbiz@gmail.com",
+                    "publishedAt": "2015-03-17T00:18:47Z",
+                    "country": "US"
+                },
+                "contentDetails": {
+                    "relatedPlaylists": {
+                        "likes": "LLhGJGhZ9SOOHvBB0Y4DOO_w",
+                        "favorites": ""
+                    }
+                },
+                "statistics": {
+                    "viewCount": "40052271189",
+                    "commentCount": "0",
+                    "subscriberCount": "25600000",
+                    "hiddenSubscriberCount": false,
+                    "videoCount": "1754"
+                },
+                "topicDetails": {
+                    "topicCategories": [
+                        "https://en.wikipedia.org/wiki/Hobby",
+                        "https://en.wikipedia.org/wiki/Food",
+                        "https://en.wikipedia.org/wiki/Entertainment",
+                        "https://en.wikipedia.org/wiki/Film",
+                        "https://en.wikipedia.org/wiki/Lifestyle_(sociology)"
+                    ]
+                },
+                "status": {
+                    "privacyStatus": "public",
+                    "isLinked": true,
+                    "madeForKids": true
+                }
+            };
+            await channelCollection.save(doc).then(
+                meta => console.log('Channel saved:', meta._rev),
+                err => {
+                    throw err;
+                }
+            );
+            break;
+        } catch (err) {
+            if (err.code === 409 && err.errorNum === 1210) { //Conflicting keys, meaning channel exists already
+                break;
+            } else if (err.code !== 'ECONNREFUSED') {
+                throw err;
+            }
+        }
+    }
 }
 
 //TODO: More individual try/catch
 //TODO: Better handling for unexpected errors and errors while saving objects
-//TODO: Don't add already saved Channels to Queue --> ask Database first
-//TODO: Decide on page range
+//TODO: Maybe don't add already saved Channels to Queue, or multiplicity can still be used as collecting more followers from that influencer
+//TODO: Maybe further decide decide on page range
 async function scheduler(seedUsers) {
     channelQueue.items = seedUsers;
+    let saveCounter = 0;
     let channel = {};
     let commentThreads = {};
     let subscriptions = {};
@@ -495,14 +572,22 @@ async function scheduler(seedUsers) {
     let likes = {};
     let channelAlready = false;
 
+    //TODO: Maybe also create regex to exclude popular grown-up topics or those that are usually not by child influencers
+    // Regexes to filter for child influencers
+    let regExp = /\b[Ff]amily|[Pp]lay|\b[Aa]ge|\b[Cc]hild(?:dren)?\b|\b[Mm]om(?:my)?\b|\b[Mm]um\b|\b[Dd]ad(?:dy)?\b|\b[Pp]arent|\b[Dd]ress-up\b|[Tt]oy|\b[Pp]retend\b|[Yy]ears\sold|/;
+    let regExpDeutsch = /\b[Ff]amilie|[Ss]piel|\bAlter\b|\bKind(?:er)?\b|\bMam(?:mi|ma)?\b|\bPap(?:pa|pi)?\b|\bEltern|\b[Vv]erkleiden\b/;
 
+
+    // Debug parts here
     console.log(channelQueue.toString());
-    let counter = 0;
+    let debugCounter = 0;
 
     while (channelQueue.length !== 0) {
         channelAlready = false;
         commentThreads = {data: {items: []}};
-        counter++;
+        subscriptions = {data: {items: []}};
+        debugCounter++;
+        saveCounter++;
 
         console.log("Collecting Channel");
 
@@ -510,47 +595,64 @@ async function scheduler(seedUsers) {
         await channelCollection.document(channelQueue.front()).then(function (doc) {
             channelAlready = true;
             doc.id = channelQueue.front();
-            console.log(doc);
+            //console.log(doc);
             channel = [false, [doc]]; //[{id: channelQueue.front()}]
             if (doc.statistics.subscriberCount >= 5000) {
-                channel = [true, [doc]];
-                console.log(channel[1]);
+                channel = [true, [doc, doc]];
+                //console.log(channel[1]);
             }
-
-        }).catch(err => {
+        }).catch(err => { //TODO: Maybe handle errors here that don't mark an unfound channel
         });
 
         if (channelAlready === false) {
             //Try to collect the channel and, when quota exceeded, try again the next day
-            try {
-                channel = await collectChannel(channelQueue.front());
-            } catch (err) {
-                if (err.code === 403 && err.errors[0].reason === "quotaExceeded") {
-                    waitUntilNextDay();
+            for (let i = 0; i < 1; i++) { // loop for recollecting Channel after connection or quota errors
+                try {
                     channel = await collectChannel(channelQueue.front());
-                } else {
-                    console.log(err)
+                } catch (err) {
+                    if (err.code === 403 && err.errors[0].reason === "quotaExceeded") {
+                        waitUntilNextDay();
+                        i--;
+                    } else if (err.code === 'ENOTFOUND') {
+                        await waitForConnection();
+                        i--;
+                    } else {
+                        console.log(err)
+                    }
                 }
             }
 
             //Try to save the channel
-            try {
-                await saveChannel(channel);
-            } catch (err) {
-                if (err.code === 409 && err.errorNum === 1210) { //Conflicting keys, meaning channel exists already
-                    console.log("Channel was already saved - this should not have happened");
-                    channelAlready = true;
-                } else {
-                    console.log(err);
+            for (let i = 0; i < 1; i++) { // loop for recollecting Channel after connection error
+                try {
+                    await saveChannel(channel);
+                } catch (err) {
+                    if (err.code === 409 && err.errorNum === 1210) { //Conflicting keys, meaning channel exists already
+                        console.log("Channel was already saved - this should not have happened");
+                        channelAlready = true;
+                    } else if (err.code === 'ECONNREFUSED') {
+                        await waitForDatabaseConnection();
+                        i--;
+                    } else {
+                        console.log(err);
+                    }
                 }
             }
         }
 
-
         console.log("Channel done");
 
-        if (channel[0] === true && (await channel[1][0].snippet.title).includes('Topic') === false) // if the channel is an influencer candidate
+        if (channel[0] === true && (await channel[1][1].snippet.title).includes('Topic') === false) // if the channel is an influencer candidate, also ignore topic channels
         {
+            //Check whether channel is a potential child or has children involved and if yes, ignore that one and save it for later
+            //TODO: Finish
+            if (regExp.test(channel[1][1].snippet.description) === false && channelQueue.items.length !== 1) {
+                console.log('Moving Channel to unlikelyChildQueue');
+                unlikelyChildQueue.enqueue(channelQueue.front());
+                channelQueue.dequeue();
+                continue;
+            }
+
 
             console.log("Collecting Comments");
 
@@ -563,38 +665,62 @@ async function scheduler(seedUsers) {
 
             for (let i = 0; i < 5; i++) {
                 try {
-
                     await collectCommentThreads(channel[1][0].id, nextPage).then(function (dat) {
-                        //TODO: Maybe check for duplicates here already, theoretically though: multiple comments <=> multiple edges
-
+                        //TODO: Maybe check for duplicates here already
                         commentThreads.data.items = commentThreads.data.items.concat(dat.data.items);
-
-                        nextPage = dat.data.nextPageToken;
+                        if (dat.data.nextPageToken === undefined) { // End the Loop if no more pages exist
+                            i += 5;
+                        } else {
+                            nextPage = dat.data.nextPageToken;
+                        }
                     });
                 } catch (err) {
                     if (err.code === 403 && err.errors[0].reason === "quotaExceeded") {
                         waitUntilNextDay();
-                        commentThreads = await collectCommentThreads(channel[1][0].id, nextPage);
-                    } else if (err.code === 403 && err.errors[0].reason === "commentsDisabled") {
-                        console.log('Comments disabled')
+                        i--;
+                    } else if (err.code === 403 && (err.errors[0].reason === "commentsDisabled" || err.errors[0].reason === "forbidden")) {
+                        console.log('(Some) comments disabled');
                         break;
+                    } else if (err.code === 400 && err.errors[0].reason === "invalidPageToken") {
+                        console.log('Page Token (became) invalid, trying without'); // This should happen if a channels comments have not been visited for a long time, but the api doc says nothing about it
+                        commentThreadPages.delete(channel[1][0].id);
+                        nextPage = undefined;
+                        i--;
+                    } else if (err.code === 404) {
+                        switch (err.errors[0].reason) {
+                            case "channelNotFound":
+                                i += 5;
+                                break;
+                            case "commentThreadNotFound":
+                                break;
+                            default:
+                                console.log(err);
+                                break;
+                        }
+                    } else if (err.code === 'ENOTFOUND') {
+                        await waitForConnection(); // Wait until connection is back
+                        i--;
                     } else {
                         console.log(err);
                     }
                 }
             }
 
-            // commentThreads = {data: {items: []}}
             // Insert page token into comment thread map in case of revisiting later
-            commentThreadPages.set(channel[1][0].id, nextPage);
+            if (nextPage !== undefined) {
+                commentThreadPages.set(channel[1][0].id, nextPage);
+            }
 
             // Save the top level comments of those threads
-            for (let x of commentThreads.data.items) {
+            for (let i = 0; i < commentThreads.data.items.length; i++) {
                 try {
-                    await saveComment(x);
+                    await saveComment(commentThreads.data.items[i]);
                 } catch (err) {
                     if (err.code === 409 && err.errorNum === 1210) { //Conflicting keys, meaning comment exists already
                         console.log("Comment was already saved");
+                    } else if (err.code === 'ECONNREFUSED') {
+                        await waitForDatabaseConnection();
+                        i--;
                     } else {
                         console.log(err);
                     }
@@ -609,114 +735,9 @@ async function scheduler(seedUsers) {
 
             console.log("Comments done");
 
-            console.log("Collecting Subscriptions");
-
-            //Try to collect some pages with up to 100 subscriptions total of the channel(sorted by relevance) and, when quota exceeded, try again the next day
-            try {
-                subscriptions = await collectSubscriptions(channel[1][0].id);
-
-                let nextPage = subscriptions.data.nextPageToken;
-
-                for (let i = 0; i < 2; i++) {
-                    try {
-                        await collectSubscriptions(channel[1][0].id, nextPage).then(function (dat) {
-                            subscriptions.data.items.concat(dat.data.items);
-                            nextPage = dat.data.nextPageToken;
-                        });
-                    } catch (err) {
-                        if (err.code === 403 && err.errors[0].reason === "quotaExceeded") {
-                            waitUntilNextDay();
-                            commentThreads = await collectSubscriptions(channel[1][0].id, nextPage);
-                        } else if (err.code === 403 && err.errors[0].reason === "commentsDisabled") {
-                            break;
-                        } else {
-                            console.log(err);
-                        }
-                    }
-                }
-            } catch (err) {
-                if (err.code === 403 && err.errors[0].reason === "quotaExceeded") {
-                    waitUntilNextDay();
-                    subscriptions = await collectSubscriptions(channel[1][0].id);
-                } else if (err.code === 403 && err.errors[0].reason === "subscriptionForbidden") {
-                    subscriptions = {data: {items: []}};
-                } else {
-                    console.log(err)
-                }
-            }
-
-            //Save the subscriptions
-            for (let x of subscriptions.data.items) {
-                console.log("Saving Subscription " + x.id);
-                try {
-                    channelQueue.enqueue(x.snippet.resourceId.channelId);
-                    await saveSubscription(x);
-                } catch (err) {
-                    if (err.code === 409 && err.errorNum === 1210) { //Conflicting keys, meaning subscription exists already
-                        console.log("Comment was already saved - This should not have happened");
-                    } else {
-                        console.log(err);
-                    }
-                }
-            }
-
-            console.log('Subs done');
-
         } else {
 
-            console.log("Collecting Subscriptions");
-
-            //Try to collect some pages with up to 100 subscriptions total of the channel(sorted by relevance) and, when quota exceeded, try again the next day
-            try {
-                subscriptions = await collectSubscriptions(channel[1][0].id);
-
-                let nextPage = subscriptions.data.nextPageToken;
-
-                for (let i = 0; i < 2; i++) {
-                    try {
-                        await collectSubscriptions(channel[1][0].id, nextPage).then(function (dat) {
-                            subscriptions.data.items.concat(dat.data.items);
-                            nextPage = dat.data.nextPageToken;
-                        });
-                    } catch (err) {
-                        if (err.code === 403 && err.errors[0].reason === "quotaExceeded") {
-                            waitUntilNextDay();
-                            commentThreads = await collectSubscriptions(channel[1][0].id, nextPage);
-                        } else if (err.code === 403 && err.errors[0].reason === "commentsDisabled") {
-                            break;
-                        } else {
-                            console.log(err);
-                        }
-                    }
-                }
-            } catch (err) {
-                if (err.code === 403 && err.errors[0].reason === "quotaExceeded") {
-                    waitUntilNextDay();
-                    subscriptions = await collectSubscriptions(channel[1][0].id);
-                } else if (err.code === 403 && err.errors[0].reason === "subscriptionForbidden") {
-                    subscriptions = {data: {items: []}};
-                } else {
-                    console.log(err)
-                }
-            }
-
-            //Save the subscriptions
-            for (let x of subscriptions.data.items) {
-                console.log("Saving Subscription " + x.id);
-                try {
-                    channelQueue.enqueue(x.snippet.resourceId.channelId);
-                    await saveSubscription(x);
-                } catch (err) {
-                    if (err.code === 409 && err.errorNum === 1210) { //Conflicting keys, meaning subscription exists already
-                        console.log("Comment was already saved - This should not have happened");
-                    } else {
-                        console.log(err);
-                    }
-                }
-            }
-
-            console.log('Subs done');
-
+            console.log("Collecting Favorites");
 
             //Try to collect the id of the favorites playlist of the channel and, when quota exceeded, try again the next day
             try {
@@ -726,66 +747,147 @@ async function scheduler(seedUsers) {
                 if (err.code === 403 && err.errors[0].reason === "quotaExceeded") {
                     waitUntilNextDay();
                     favorites = await collectFavorites(channel[1][0].id);
+                } else if (err.code === 'ENOTFOUND') {
+                    await waitForConnection();
+                    continue;
+                } else if ((err.code === 403 && (err.errors[0].reason === "channelClosed" || err.errors[0].reason === "channelSuspended")) || (err.code === 404 && err.errors[0].reason === "channelNotFound")) {
+                    console.log('Channel not available: ' + err.errors[0].reason);
                 } else {
                     console.log(err);
                 }
             }
 
             //Then try to collect up to 50 favorited videos of the current channel and, when quota exceeded, try again the next day
-            try {
-                if (favorites !== "") {
-                    favoritedVideoIds = await collectVideoIdsFromPlaylist(favorites);
-                }
-            } catch (err) {
-                if (err.code === 403 && err.errors[0].reason === "quotaExceeded") {
-                    waitUntilNextDay();
-                    favoritedVideos = await collectVideoIdsFromPlaylist(favorites);
-                } else {
-                    console.log(err);
-                }
-            }
-
-            //Then try to collect up to 50 "favorited" channels of the current channel and, when quota exceeded, try again the next day
-            try {
-                if (favorites !== "") {
-                    favoritedVideos = await collectVideoInfosFromIDList(favoritedVideoIds);
-                } else {
-                    favoritedVideos = {data: {items: []}};
-                }
-            } catch (err) {
-                if (err.code === 403 && err.errors[0].reason === "quotaExceeded") {
-                    waitUntilNextDay();
-                    favoritedVideos = await collectVideoInfosFromIDList(favoritedVideoIds);
-                } else {
-                    console.log(err);
-                }
-            }
-
-            //Save the favourites and add them to th queue
-            for (let x of favoritedVideos.data.items) {
+            if (favorites !== "") {
                 try {
-                    channelQueue.enqueue(x.snippet.channelId);
-                    await saveFavorite(channel[1][0].id, x);
+                    favoritedVideoIds = await collectVideoIdsFromPlaylist(favorites);
                 } catch (err) {
-                    if (err.code === 409 && err.errorNum === 1210) { //Conflicting keys, meaning channel exists already
-                        console.log("Favourite was already saved - This should not have happened");
+                    if (err.code === 403 && err.errors[0].reason === "quotaExceeded") {
+                        waitUntilNextDay();
+                        favoritedVideoIds = await collectVideoIdsFromPlaylist(favorites);
+                    } else if (err.code === 'ENOTFOUND') {
+                        await waitForConnection();
+                        continue;
+                    } else {
+                        console.log(err);
+                    }
+                }
+
+                //Then try to collect up to 50 "favorited" channels of the current channel and, when quota exceeded, try again the next day
+                try {
+                    if (favoritedVideoIds !== "") {
+                        console.log('Collecting favIds: ' + favoritedVideoIds[0])
+                        favoritedVideos = await collectVideoInfosFromIDList(favoritedVideoIds[0]);
+                    } else {
+                        favoritedVideos = {data: {items: []}};
+                    }
+                } catch (err) {
+                    if (err.code === 403 && err.errors[0].reason === "quotaExceeded") {
+                        waitUntilNextDay();
+                        favoritedVideos = await collectVideoInfosFromIDList(favoritedVideoIds[0]);
+                    } else if (err.code === 'ENOTFOUND') {
+                        await waitForConnection();
+                        continue;
+                    } else {
+                        console.log(err);
+                    }
+                }
+
+                //Save the favourites and add them to th queue
+                for (let i = 0; i < favoritedVideos.data.items.length; i++) {
+                    try {
+                        channelQueue.enqueue(favoritedVideos.data.items[i].snippet.channelId);
+                        await saveFavorite(channel[1][0].id, favoritedVideos.data.items[i]);
+                    } catch (err) {
+                        if (err.code === 409 && err.errorNum === 1210) { //Conflicting keys, meaning channel exists already
+                            console.log("Favourite was already saved");
+                        } else if (err.code === 'ECONNREFUSED') {
+                            await waitForDatabaseConnection();
+                            i--;
+                        } else {
+                            console.log(err);
+                        }
+                    }
+                }
+            }
+            console.log('Favorites done');
+
+        }
+
+        if (channelAlready === false) {
+            console.log("Collecting Subscriptions");
+
+            //Try to collect some pages with up to 100 subscriptions total of the channel(sorted by relevance) and, when quota exceeded, try again the next day
+            let nextPage = undefined;
+
+            for (let i = 0; i < 2; i++) {
+                try {
+                    await collectSubscriptions(channel[1][0].id, nextPage).then(function (dat) {
+                        subscriptions.data.items = subscriptions.data.items.concat(dat.data.items);
+                        if (dat.data.nextPageToken === undefined) {
+                            i++;
+                        } else {
+                            nextPage = dat.data.nextPageToken;
+                        }
+                    });
+                } catch (err) {
+                    if (err.code === 403 && err.errors[0].reason === "quotaExceeded") {
+                        waitUntilNextDay();
+                        i--;
+                    } else if (err.code === 403 && err.errors[0].reason === "subscriptionForbidden") {
+                        break;
+                    } else if (err.code === 'ENOTFOUND') {
+                        await waitForConnection();
+                        i--;
+                    } else if ((err.code === 403 && (err.errors[0].reason === "accountClosed" || err.errors[0].reason === "accountSuspended")) || (err.code === 404 && err.errors[0].reason === "subscriberNotFound")) {
+                        console.log('Channel not available: ' + err.errors[0].reason);
                     } else {
                         console.log(err);
                     }
                 }
             }
 
-            console.log('Favs done');
+            //Save the subscriptions
+            for (let i = 0; i < subscriptions.data.items.length; i++) {
+                //console.log("Saving Subscription " + x.id);
+                try {
+                    channelQueue.enqueue(subscriptions.data.items[i].snippet.resourceId.channelId);
+                    await saveSubscription(subscriptions.data.items[i]);
+                } catch (err) {
+                    if (err.code === 409 && err.errorNum === 1210) { //Conflicting keys, meaning subscription exists already
+                        console.log("Subscription was already saved");
+                    } else if (err.code === 'ECONNREFUSED') {
+                        await waitForDatabaseConnection();
+                        i--;
+                    } else {
+                        console.log(err);
+                    }
+                }
+            }
 
+            console.log('Subs done');
         }
 
         console.log('\n' + 'REMAINING CHANNELS:' + (channelQueue.items.length - 1) + '\n');
 
-        if (counter === 250) {
+        if (saveCounter === 50) {
+            saveCounter = 0;
+            fs.writeFileSync("./RemainingChannels.txt", channelQueue.toString(), "utf-8");
+        }
+
+        // Debug Wait
+        if (debugCounter === 3) {
             console.log('Stop tests');
             waitUntilNextDay();
         }
+
         channelQueue.dequeue();
+
+        //Fill with less "interesting" influencers if out of potential children
+        if (channelQueue.isEmpty() === true && unlikelyChildQueue.isEmpty() === false) {
+            console.log('Retrieving from unlikelyChildQueue');
+            channelQueue.enqueue(unlikelyChildQueue.front());
+        }
     }
 }
 
@@ -836,16 +938,17 @@ async function scheduler(seedUsers) {
 //Person with favourites: UC2OY4ruLUWLLknZ8OG4mnsw
 //Ryans World: UChGJGhZ9SOOHvBB0Y4DOO_w
 //Entenburg: UCNrInjQKQBYYWo9FjpI8F3g
+//GamerGirl: UCije75lmV_7fVP7m4dJ7ZoQ
 //Video with comments enabled: 3bRdgQ6twPY
 //Video with comments disabled: tg6GwHtS9vY
 //console.log(test);
 
-// collectChannel('UChGJGhZ9SOOHvBB0Y4DOO_w').then(function (dat) {
+// collectChannel('UCsDUx3IrrXQI0CbfKMxTCww').then(function (dat) {
 // //console.log(dat);
-// //console.log(dat[1][0]);
+// //console.log(dat[1]);
 //     saveChannel(dat).then(function () {
 //         console.log('done');
-//     });
+//     }).catch(err => console.log(err));
 // });
 
 // collectSubscriptions('UChGJGhZ9SOOHvBB0Y4DOO_w').then(function (dat) {
@@ -853,7 +956,7 @@ async function scheduler(seedUsers) {
 //     //console.log(dat.data.items);
 //     saveSubscription(dat.data.items[0]).then(function () {
 //         console.log('done');
-//     })
+//     }).catch(err => console.log(err));
 // }).catch(err => console.log(err.code + "\n" + err.errors[0].reason));
 
 // collectFavorites('UC2OY4ruLUWLLknZ8OG4mnsw').then(function (dat) {
@@ -873,7 +976,7 @@ async function scheduler(seedUsers) {
 //
 // });
 
-// collectCommentThreads('UChGJGhZ9SOOHvBB0Y4DOO_w').then(function(dat){
+// collectCommentThreads('UChGJGhZ9SOOHvBB0Y4DOO_w', 'CAoQAA').then(function(dat){
 //     console.log(dat.data.items[0].snippet.topLevelComment.snippet);
 //     saveComment(dat.data.items[0]).then(function() {
 //         console.log('done');
@@ -882,12 +985,111 @@ async function scheduler(seedUsers) {
 
 //, 'UCsDUx3IrrXQI0CbfKMxTCww', 'UCsDUx3IrrXQI0CbfKMxTCww', 'UCkXMf7wgQ49d3KFyWl2BXgQ', 'UChGJGhZ9SOOHvBB0Y4DOO_w', 'UCHNA1EASDBXfvwMBgWGr0vg'
 
+//McClure: UCNm8WjumwijTwIVmCOLi0KQ
+
 try {
-    scheduler(['UCkXMf7wgQ49d3KFyWl2BXgQ']);
+    scheduler(['UCsDUx3IrrXQI0CbfKMxTCww', 'UCkXMf7wgQ49d3KFyWl2BXgQ', 'UChGJGhZ9SOOHvBB0Y4DOO_w', 'UCHNA1EASDBXfvwMBgWGr0vg']);
 } catch (err) {
     console.log(err);
     fs.writeFileSync("./RemainingChannels.txt", channelQueue.toString(), "utf-8");
 }
+
+
+{
+    const testString1 = "Hi! Welcome to FamousTubeKIDS. This channel is all about us (Cali & Kameiro) having fun... From dress-up to playing with our favourite toys, you're bound to have a great time here! Subscribe for weekly videos.\n" +
+        "\n" +
+        "SEE YOU SOON :)\n" +
+        "\n" +
+        "This channel is managed by a parent.\n" +
+        "\n" +
+        "For business inquiries please email us at famoustubekids@gmail.com";
+
+    const testString2 = "Hey guys! I'm Gavin Magnus, and welcome to my fun and crazy life! I enjoy creating funny videos including 24 hour challenges, girlfriend challenges, trending and sometimes messy challenges,  last to challenges, and simple day in the life vlogs. I'm usually always with my funny friends or my crush Coco Quinn.  I have an epic new song called \"Catching Feelings\" that is awesome for all ages!\n" +
+        "\n" +
+        "I want to thank my #goatfam for always being loyal and watching every prank, challenge, and vlog I do. \n" +
+        "If you’re new to my channel, make sure you SUBSCRIBE and hit that 🛎 to see my newest videos and to be a part of the Goat Fam!\n" +
+        "\n" +
+        "You may have seen:\n" +
+        "\"Crushin\"  w/ 22 million views.\n" +
+        "\"Seniorita\" w/ 40 million views \n" +
+        "\"It's You\" w/ 6 million  views\n" +
+        "\"Catching Feelings\" w/ 5 million views\n" +
+        "\n" +
+        "Instagram -  @gavinmagnus";
+
+    const testString3 = "Welcome to my channel! I’m Sarah Dorothy Little, and I love making videos with my friends and family. I cover mostly beauty, challenges, skits, and anything else I’m doing that I think you might enjoy. I also love music, so you’ll see me rap, sing, and dance -- checkout my original song Catch My Woah. I’m a member of the Gavin Magnus #GoatFam, so checkout those videos in my Playlist!\n" +
+        "\n" +
+        "I live on a ranch near Yosemite with 3 dogs, 3 cats, 3 alpacas, 2 llamas, 16 chickens, 2 brothers, and my parents. I also live in LA part time, so I get to be a country girl and a city girl! I love playing volleyball and watching my favorite shows on Netflix, like Vampire Diaries.\n" +
+        "\n" +
+        "Subscribe and turn on notifications to keep up with my crazy-fun life! (Parent run account.)\n" +
+        "You can follow me on these other social media platforms:\n" +
+        "\n" +
+        "Instagram and TikTok: @sarahdorothylittle\n" +
+        "Twitter: @sarahdorothylit\n" +
+        "Facebook: facebook.com/sarahdorothylittle\n" +
+        "\n" +
+        "Fan Mail:\n" +
+        "Sarah Dorothy Little\n" +
+        "PO Box 2883\n" +
+        "Oakhurst, CA 93644";
+
+    const testString4 = "Welcome to THE ACE FAMILY channel. Join The ACE Family and SUBSCRIBE! Our videos include vlogs, crazy experiences, challenges, pranks, and fun family times.\n" +
+        "SUBSCRIBE HERE: http://bit.ly/THEACEFAMILY\n" +
+        "\n" +
+        "STALK US :)\n" +
+        "\n" +
+        "Catherine's Instagram: https://www.instagram.com/catherinepaiz/\n" +
+        "Catherine's Twitter: http://twitter.com/catherinepaiz\n" +
+        "Catherine's SnapChat: Catherinepaiz\n" +
+        "\n" +
+        "Austin's Instagram: https://www.instagram.com/austinmcbroom/\n" +
+        "Austin's Twitter: https://twitter.com/AustinMcbroom\n" +
+        "Austin's SnapChat: TheRealMcBroom\n" +
+        "\n" +
+        "THE ACE FAMILY official Facebook Page https://www.facebook.com/The.ACE.Family/\n" +
+        "Business inquires: acehatcollection@gmail.com";
+
+    const testString5 = "WHATS UP?! Im Jake Paul.\n" +
+        "Im 22, live in Los Angeles, & have a crazy life! Keep up :) \n" +
+        "The squad \"Team 10\" & I are always making comedy vids, acting, doing action sports, & going on crazy adventures. \n" +
+        "Subscribe & watch daily to keep up with the madness \n" +
+        "JAKE PAULERS FOR LIFE\n" +
+        "\n" +
+        "FAHLO ME OTHER SOCIAL MEDIAS \n" +
+        "Instagram: jakepaul\n" +
+        "Twitter: jakepaul\n" +
+        "Snapchat: jakepaul19\n" +
+        "\n" +
+        "Oh... and you can text me: 310-870-3349\n" +
+        "\n" +
+        "Business: jake@team10official.com";
+
+    const testString6 = "We are a positive lifestyle brand centering content around our identical twins, Ava and Alexis, aka \"the McClure Twins\". Other members of the family are Justin (Dad), Ami (Mom), and Jersey (he has his own channel, below). \n" +
+        "Our content is \"vlog\" style, based on reality, and leans more to women's audience with sprinkled life lessons and good parenting:)\n" +
+        "We are a Forbes Top Influencer, Shorty Awards finalist, and we've been featured on CBS and Good Morning America.\n" +
+        "\n" +
+        "Thanks for learning more about us! Inquries: themccluretwins@gmail.com\n" +
+        "\n" +
+        "Follow Instagram:\n" +
+        "@mccluretwins \n" +
+        "@just _aminat\n" +
+        "@jkmcclure\n" +
+        "@jerseytayomcclure\n" +
+        "\n" +
+        "Playtime with Jersey : https://www.youtube.com/channel/UCHaROGr_2_YLh25L8EhBJ-w";
+}
+
+let regExp = /\b[Ff]amily|[Pp]lay|\b[Aa]ge|\b[Cc]hild(?:dren)?\b|\b[Mm]om(?:my)?\b|\b[Dd]ad(?:dy)?\b|\b[Pp]arent|\b[Dd]ress-up\b|[Tt]oy|\b[Pp]retend\b/;
+let regExpDeutsch = /\b[Ff]amilie|[Ss]piel|\bAlter\b|\bKind(?:er)?\b|\bMam(?:mi|ma)?\b|\bPap(?:pa|pi)?\b|\bEltern|\b[Vv]erkleiden\b/;
+
+// console.log(regExp.test(testString1));
+// console.log(regExp.test(testString2));
+// console.log(regExp.test(testString3));
+// console.log(regExp.test(testString4));
+// console.log(regExp.test(testString5)); // should be false
+// console.log(regExp.test(testString6));
+// console.log(regExp.test("Shit-Parent"));
+//console.log(regExp.test("Daddydy"));
 
 //fs.writeFileSync("./RemainingChannels.txt", channelQueue.toString(), "utf-8");
 
@@ -920,6 +1122,15 @@ try {
 //
 //     process.exit();
 // });
+
+// waitForConnection().then(function () {
+//     console.log('Connected');
+// })
+
+// waitForDatabaseConnection().then(function () {
+//     console.log('Connected to Database');
+// });
+
 
 console.log('test');
 
