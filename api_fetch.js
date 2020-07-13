@@ -471,14 +471,18 @@ async function saveComment(commentThread) {
 function waitUntilNextDay() {
     let date = new Date();
 
-    const stopTime = date.getTime();
+    const currDay = date.getUTCDay();
 
+    console.log('Saving Channels');
     // Save remaining Channels
     fs.writeFileSync("./RemainingChannels.txt", channelQueue.toString(), "utf-8");
+    fs.writeFileSync("./CommentPageTokens.txt", commentThreadPages.toString(), "utf-8");
 
     console.log('Waiting until the quota is full again');
 
-    while (date.getTime() < stopTime + 86400000) ; //86.400.000 is all milliseconds in one day
+    while (date.getUTCDay() === currDay) {
+        date = new Date();
+    }
 
 }
 
@@ -573,9 +577,11 @@ async function scheduler(seedUsers) {
     let channelAlready = false;
 
     //TODO: Maybe also create regex to exclude popular grown-up topics or those that are usually not by child influencers
-    // Regexes to filter for child influencers
-    let regExp = /\b[Ff]amily|[Pp]lay|\b[Aa]ge|\b[Cc]hild(?:dren)?\b|\b[Mm]om(?:my)?\b|\b[Mm]um\b|\b[Dd]ad(?:dy)?\b|\b[Pp]arent|\b[Dd]ress-up\b|[Tt]oy|\b[Pp]retend\b|[Yy]ears\sold|Roblox/;
+    //TODO: Test
+    // Regexes to filter for child influencers and to filter out non-helpful big channels
+    let regExp = /\b[Ff]amily|[Pp]lay|\b[Aa]ges?[^-]|\b[Cc]hild(?:dren)?\b|\b[Mm]om(?:my)?\b|\b[Mm]um\b|\b[Dd]ad(?:dy)?\b|\b[Pp]arent|\b[Dd]ress-up\b|[Yy]ears?\sold|[Tt]oy|\b[Pp]retend\b|Roblox|[Bb]rother\b|[Ss]ister\b/;
     let regExpDeutsch = /\b[Ff]amilie|[Ss]piel|\bAlter\b|\bKind(?:er)?\b|\bMam(?:mi|ma)?\b|\bPap(?:pa|pi)?\b|\bEltern|\b[Vv]erkleiden\b/;
+    let regExpExclude = /\b[Oo]fficial\s(?:[Yy]outube)?\s[Cc]annel|\b[Oo]fficial\s(?:(?:[Cc]annel)|(?:[Pp]resence))/; // Seemingly often done by Shows or Celebrities not coming from Youtube
 
 
     // Debug parts here
@@ -642,14 +648,23 @@ async function scheduler(seedUsers) {
 
         console.log("Channel done");
 
-        if (channel[0] === true && (await channel[1][1].snippet.title).includes('Topic') === false) // if the channel is an influencer candidate, also ignore topic channels
+        if (channel[0] === true && channel[1][1].snippet.title.includes('- Topic') === false && channel[1][1].snippet.title.includes('VEVO') === false) // if the channel is an influencer candidate, also ignore those with topic or rather old practice of VEVO in title of channels
         {
-            //Check whether channel is a potential child or has children involved and if yes, ignore that one and save it for later
-            if (regExp.test(channel[1][1].snippet.description) === false && regExpDeutsch.test(channel[1][1].snippet.description) === false && channelQueue.items.length !== 1) {
-                console.log('Moving Channel to unlikelyChildQueue');
-                unlikelyChildQueue.enqueue(channelQueue.front());
-                channelQueue.dequeue();
-                continue;
+            //Check whether channel is a potential child or has children involved and if no, ignore that one and save it for later
+            if (channelQueue.items.length !== 1 && regExp.test(channel[1][1].snippet.description) === false && regExpDeutsch.test(channel[1][1].snippet.description) === false) {
+                if (regExpExclude.test(channel[1][1].snippet.description) === false) {
+                    console.log('Moving Channel to unlikelyChildQueue');
+                    unlikelyChildQueue.enqueue(channelQueue.front());
+                    channelQueue.dequeue();
+
+                    if (channelQueue.isEmpty() === true) {
+                        channelQueue.enqueue(unlikelyChildQueue.front());
+                    }
+                    continue;
+                } else {
+                    console.log('Deleting unhelpful channel');
+                    channelQueue.dequeue();
+                }
             }
 
             console.log("Collecting Comments");
@@ -665,6 +680,11 @@ async function scheduler(seedUsers) {
                 try {
                     await collectCommentThreads(channel[1][0].id, nextPage).then(function (dat) {
                         //TODO: Maybe check for duplicates here already
+                        if (i === 0 && dat.data.items.length === 0) {
+                            console.log('Empty comment List encountered, stopping comment collection'); // Can actually happen without the API returning an error code, see UCChKgkwqZm41sgqv3KyX8Hg for example
+                            i += 5;
+                        }
+
                         commentThreads.data.items = commentThreads.data.items.concat(dat.data.items);
                         if (dat.data.nextPageToken === undefined) { // End the Loop if no more pages exist
                             i += 5;
@@ -871,11 +891,11 @@ async function scheduler(seedUsers) {
         if (saveCounter === 50) {
             saveCounter = 0;
             fs.writeFileSync("./RemainingChannels.txt", channelQueue.toString(), "utf-8");
-            fs.writeFileSync("./CommentPageTokens.txt", channelQueue.toString(), "utf-8");
+            fs.writeFileSync("./CommentPageTokens.txt", commentThreadPages.toString(), "utf-8");
         }
 
         // Debug Wait
-        if (debugCounter === 250) {
+        if (debugCounter === 1) {
             console.log('Stop tests');
             waitUntilNextDay();
         }
@@ -988,15 +1008,15 @@ async function scheduler(seedUsers) {
 
 try {
     let channels = fs.readFileSync("./RemainingChannels.txt",'utf-8');
+    //Debug Part
+    channels = "";
 
     if(channels === "")
     {
-        console.log('jo');
-        scheduler(['UCsDUx3IrrXQI0CbfKMxTCww', 'UCkXMf7wgQ49d3KFyWl2BXgQ', 'UChGJGhZ9SOOHvBB0Y4DOO_w', 'UCHNA1EASDBXfvwMBgWGr0vg']);
+        scheduler(['UCChKgkwqZm41sgqv3KyX8Hg']);
     }
     else
     {
-        console.log('no');
         scheduler(channels.split(","));
     }
 
@@ -1089,18 +1109,34 @@ try {
         "@jerseytayomcclure\n" +
         "\n" +
         "Playtime with Jersey : https://www.youtube.com/channel/UCHaROGr_2_YLh25L8EhBJ-w";
+
+    const testString7 = "Shalom guys, I’m Piper Rockelle I’m a girl living my dream in Hollywood. On this channel we believe in entertainment, quality, family, fun, love, and good vibes. Here you can find me doing crazy challenges. Boyfriend challenges, crush challenges,  24 hour challenges, last to challenges, and more. Also I do DIYs, tutorials, make up, instagram videos. Normally I’m with an awesome friend, or crush, or boyfriend in my videos. Along with all this my videos are great for boys and girls of all ages, even adults! I hope I am able to make you laugh or cheer up if you’re having a bad day.\n" +
+        "DON’T forget to follow my Instagram @ PiperRockelle , there you can find more about me and my other passions in music and dance.\n\n" +
+        "You may have seen\n" +
+        "Piper Rockelle - Treat Myself (Official Music Video) **FIRST KISS** 💋\n" +
+        "I LOST MY MEMORY PRANK ON MY BOYFRIEND **Gone Too Far**🤕💔\n" +
+        "Recreating VIRAL Couples TikToks With My CRUSH Challenge ❤️🔥\n\n" +
+        "Instagram - PiperRockelle\n" +
+        "Twitter - PiperRockelle";
+
+    const testString8 = "Official YouTube for Lilly K! Age: 11";
+
+    const testString9 = "Danielle \"Dani\" Cohn is a 15 year old American actress, model, social media sensation, and recording artist signed with Audity Music. In 2014 she was crowned Miss Florida Jr. Preteen, and has since attracted over 11 million fans via Musical.ly, Instagram, Youtube, and Twitter.";
 }
 
-//let regExp = /\b[Ff]amily|[Pp]lay|\b[Aa]ge|\b[Cc]hild(?:dren)?\b|\b[Mm]om(?:my)?\b|\b[Dd]ad(?:dy)?\b|\b[Pp]arent|\b[Dd]ress-up\b|[Tt]oy|\b[Pp]retend\b/;
-//let regExpDeutsch = /\b[Ff]amilie|[Ss]piel|\bAlter\b|\bKind(?:er)?\b|\bMam(?:mi|ma)?\b|\bPap(?:pa|pi)?\b|\bEltern|\b[Vv]erkleiden\b/;
-
+// let regExp = /\b[Ff]amily|[Pp]lay|\b[Aa]ges?[^-]|\b[Cc]hild(?:dren)?\b|\b[Mm]om(?:my)?\b|\b[Mm]um\b|\b[Dd]ad(?:dy)?\b|\b[Pp]arent|\b[Dd]ress-up\b|[Tt]oy|\b[Pp]retend\b|[Yy]ears?\sold|Roblox/;
+// let regExpDeutsch = /\b[Ff]amilie|[Ss]piel|\bAlter\b|\bKind(?:er)?\b|\bMam(?:mi|ma)?\b|\bPap(?:pa|pi)?\b|\bEltern|\b[Vv]erkleiden\b/;
+//
+//
 // console.log(regExp.test(testString1));
 // console.log(regExp.test(testString2));
 // console.log(regExp.test(testString3));
 // console.log(regExp.test(testString4));
 // console.log(regExp.test(testString5)); // should be false
 // console.log(regExp.test(testString6));
-// console.log(regExp.test("Shit-Parent"));
+// console.log(regExp.test(testString7));
+// console.log(regExp.test(testString8));
+// console.log(regExp.test(testString9));
 //console.log(regExp.test("Daddydy"));
 
 //fs.writeFileSync("./RemainingChannels.txt", channelQueue.toString(), "utf-8");
