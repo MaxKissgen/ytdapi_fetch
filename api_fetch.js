@@ -20,7 +20,8 @@ db.useBasicAuth("root", arangoPass);
 
 //TODO: Change accordingly for ginkgo, this also potentially goes for the 'Channels/' part in the save[...] functions
 db.useDatabase('testBase');
-channelCollection = db.collection('Channels');
+const channelCollectionName = 'Channels';
+channelCollection = db.collection(channelCollectionName);
 subsCollection = db.collection('subscribed_by');
 likesCollection = db.collection('videosLiked_by');
 commentsCollection = db.collection('videosCommented_by');
@@ -77,13 +78,12 @@ let unlikelyChildQueue = new Queue();
 //Map to store page tokens
 let commentThreadPages = new Map();
 
-function mapToString(map){
+function mapToString(map) {
     let str = "";
     let i = 0;
-    for(let [key, value] of map.entries())
-    {
+    for (let [key, value] of map.entries()) {
         i++;
-        if(i < map.size) {
+        if (i < map.size) {
             str = str.concat(key + ":" + value + ",");
         } else {
             str = str.concat(key + ":" + value);
@@ -92,11 +92,10 @@ function mapToString(map){
     return str;
 }
 
-function mapFromStringList(strList){
+function mapFromStringList(strList) {
     let map = new Map();
     let pos = 0;
-    for(let x of strList)
-    {
+    for (let x of strList) {
         const tmpList = x.split(":");
         map.set(tmpList[0], tmpList[1]);
     }
@@ -389,8 +388,12 @@ async function saveChannel(channel) {
             country: channel[1][1].snippet.country
         };
 
-        topicDetails = {
-            topicCategories: channel[1][1].topicDetails.topicCategories
+        if (channel[1][1].topicDetails !== undefined) {
+            topicDetails = {
+                topicCategories: channel[1][1].topicDetails.topicCategories
+            }
+        } else {
+            topicDetails = "";
         }
 
         status = {
@@ -423,8 +426,8 @@ async function saveChannel(channel) {
 async function saveSubscription(subscription) {
     const doc = {
         _key: subscription.id,
-        _from: 'Channels/' + subscription.snippet.resourceId.channelId,
-        _to: 'Channels/' + subscription.snippet.channelId,
+        _from: channelCollectionName + '/' + subscription.snippet.resourceId.channelId,
+        _to: channelCollectionName + '/' + subscription.snippet.channelId,
         publishedAt: subscription.snippet.publishedAt,
         // description: subscription.snippet.description,
         // contentDetails: {
@@ -443,8 +446,8 @@ async function saveSubscription(subscription) {
 async function saveFavorite(channelId, favoritedVideo) {
     const doc = {
         _key: channelId + favoritedVideo.id + favoritedVideo.snippet.channelId,
-        _from: 'Channels/' + favoritedVideo.snippet.channelId,
-        _to: 'Channels/' + channelId,
+        _from: channelCollectionName + '/' + favoritedVideo.snippet.channelId,
+        _to: channelCollectionName + '/' + channelId,
         videoId: favoritedVideo.id,
         videoTitle: favoritedVideo.snippet.title,
         videoTags: favoritedVideo.snippet.tags
@@ -461,8 +464,8 @@ async function saveFavorite(channelId, favoritedVideo) {
 async function saveLike(channelId, likedVideo) {
     const doc = {
         _key: channelId + likedVideo.id + likedVideo.snippet.channelId,
-        _from: 'Channels/' + likedVideo.snippet.channelId,
-        _to: 'Channels/' + channelId,
+        _from: channelCollectionName + '/' + likedVideo.snippet.channelId,
+        _to: channelCollectionName + '/' + channelId,
         videoId: likedVideo.id
     };
 
@@ -477,8 +480,8 @@ async function saveLike(channelId, likedVideo) {
 async function saveComment(commentThread) {
     const doc = {
         _key: commentThread.id,
-        _from: 'Channels/' + commentThread.snippet.topLevelComment.snippet.channelId,
-        _to: 'Channels/' + commentThread.snippet.topLevelComment.snippet.authorChannelId.value,
+        _from: channelCollectionName + '/' + commentThread.snippet.topLevelComment.snippet.channelId,
+        _to: channelCollectionName + '/' + commentThread.snippet.topLevelComment.snippet.authorChannelId.value,
         videoID: commentThread.snippet.topLevelComment.snippet.videoId,
         value: commentThread.snippet.topLevelComment.snippet.textDisplay
     };
@@ -534,7 +537,7 @@ async function waitForDatabaseConnection() {
     while (true) {
         try {
             const doc = {
-                "_id": "Channels/UChGJGhZ9SOOHvBB0Y4DOO_w",
+                "_id": channelCollectionName + "/UChGJGhZ9SOOHvBB0Y4DOO_w",
                 "_key": "UChGJGhZ9SOOHvBB0Y4DOO_w",
                 "snippet": {
                     "title": "Ryan's World",
@@ -819,7 +822,7 @@ async function scheduler(seedUsers) {
 
             //Then try to collect up to 50 favorited videos of the current channel and, when quota exceeded, try again the next day
             if (favorites !== "") {
-                for(let i=0; i<1; i++) {
+                for (let i = 0; i < 1; i++) {
                     try {
                         favoritedVideoIds = await collectVideoIdsFromPlaylist(favorites);
                     } catch (err) {
@@ -836,7 +839,7 @@ async function scheduler(seedUsers) {
                 }
 
                 //Then try to collect up to 50 "favorited" channels of the current channel through those videos and, when quota exceeded, try again the next day
-                for(let i=0; i<1; i++) {
+                for (let i = 0; i < 1; i++) {
                     try {
                         if (favoritedVideoIds !== "") {
                             favoritedVideos = await collectVideoInfosFromIDList(favoritedVideoIds[0]);
@@ -941,7 +944,7 @@ async function scheduler(seedUsers) {
         }
 
         // Debug Wait
-        if (debugCounter === 25) {
+        if (debugCounter === 800) {
             console.log('Stop tests');
             waitUntilNextDay();
         }
@@ -1048,7 +1051,7 @@ async function scheduler(seedUsers) {
 //     });
 // }).catch(err => console.log(err.code + "\n" + err.errors[0].reason));
 
-//, 'UCsDUx3IrrXQI0CbfKMxTCww', 'UCsDUx3IrrXQI0CbfKMxTCww', 'UCkXMf7wgQ49d3KFyWl2BXgQ', 'UChGJGhZ9SOOHvBB0Y4DOO_w', 'UCHNA1EASDBXfvwMBgWGr0vg'
+//UCfXI3c8AWF3smkqRM2Iiaxw,UC4pDKMzp7BMUrj1vxPqIMCw,UCNm8WjumwijTwIVmCOLi0KQ,UCMDoGQEBNf-yBnUXugkjSYA
 
 //McClure: UCNm8WjumwijTwIVmCOLi0KQ
 
@@ -1060,12 +1063,12 @@ try {
     channels = "";
     pageTokens = "";
 
-    if(pageTokens !== ""){
+    if (pageTokens !== "") {
         commentThreadPages = mapFromStringList(pageTokens.split(","));
     }
 
     if (channels === "") {
-        scheduler(['UCNm8WjumwijTwIVmCOLi0KQ','UCkXMf7wgQ49d3KFyWl2BXgQ']);
+        scheduler(['UChGJGhZ9SOOHvBB0Y4DOO_w','UCHa-hWHrTt4hqh-WiHry3Lw','UCfXI3c8AWF3smkqRM2Iiaxw','UCXa9irCtpM1t4l2cPuBKcQg','UC4pDKMzp7BMUrj1vxPqIMCw', 'UCNm8WjumwijTwIVmCOLi0KQ', 'UCMDoGQEBNf-yBnUXugkjSYA','UC6sSkkemzPjmrzS0Y0V_2zw', 'UCZsDDuoeSVgpgy3zWLAhArw','UCwlHYiYchPT-xcJquyBbvRQ','UCDKN0w9ZvbFED0nUbBPLV6A','UCgYQ_-hKHVtevMpqaJSHnQw','UCC-RHF_77zQdKcA75hr5oTQ']);
     } else {
         scheduler(channels.split(","));
     }
