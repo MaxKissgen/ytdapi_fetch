@@ -17,7 +17,6 @@ const arangoPass = fs.readFileSync('./.arangoPass', 'utf8');
 //TODO: Change accordingly for ginkgo
 db = new Database('http+tcp://127.0.0.1:8529');
 db.useBasicAuth("root@Youtube", arangoPass);
-
 //TODO: Change accordingly for ginkgo, this also potentially goes for the 'Channels/' part in the save[...] functions
 db.useDatabase('Youtube');
 const channelCollectionName = 'Channels';
@@ -345,13 +344,15 @@ async function collectCommentThreads(id, pageToken) {
 }
 
 //TODO: Modify method such that it tries to neglect negative comments
-//TODO: Check what happens if id unavailable
+//TODO: Check what happens if id unavailable, error you dumb fuck
 //Retrieves ChannelIds from comment-threads related to a specific channel
 function collectChannelIdsFromComments(commentThreads) {
     let channelIDList = [];
     for (let x of commentThreads.data.items) {
-        if (channelIDList.includes(x.snippet.topLevelComment.snippet.authorChannelId.value) === false) {
-            channelIDList.push(x.snippet.topLevelComment.snippet.authorChannelId.value);
+        if (x.snippet.topLevelComment.snippet.authorChannelId !== undefined) {
+            if (channelIDList.includes(x.snippet.topLevelComment.snippet.authorChannelId.value) === false) {
+                channelIDList.push(x.snippet.topLevelComment.snippet.authorChannelId.value);
+            }
         }
     }
 
@@ -1068,7 +1069,7 @@ try {
     }
 
     if (channels === "") {
-        scheduler(['UChGJGhZ9SOOHvBB0Y4DOO_w','UCHa-hWHrTt4hqh-WiHry3Lw','UCfXI3c8AWF3smkqRM2Iiaxw','UCXa9irCtpM1t4l2cPuBKcQg','UC4pDKMzp7BMUrj1vxPqIMCw', 'UCNm8WjumwijTwIVmCOLi0KQ', 'UCMDoGQEBNf-yBnUXugkjSYA','UC6sSkkemzPjmrzS0Y0V_2zw', 'UCZsDDuoeSVgpgy3zWLAhArw','UCwlHYiYchPT-xcJquyBbvRQ','UCDKN0w9ZvbFED0nUbBPLV6A','UCgYQ_-hKHVtevMpqaJSHnQw','UCC-RHF_77zQdKcA75hr5oTQ']);
+        scheduler(['UChGJGhZ9SOOHvBB0Y4DOO_w', 'UCHa-hWHrTt4hqh-WiHry3Lw', 'UCfXI3c8AWF3smkqRM2Iiaxw', 'UCXa9irCtpM1t4l2cPuBKcQg', 'UC4pDKMzp7BMUrj1vxPqIMCw', 'UCNm8WjumwijTwIVmCOLi0KQ', 'UCMDoGQEBNf-yBnUXugkjSYA', 'UC6sSkkemzPjmrzS0Y0V_2zw', 'UCZsDDuoeSVgpgy3zWLAhArw', 'UCwlHYiYchPT-xcJquyBbvRQ', 'UCDKN0w9ZvbFED0nUbBPLV6A', 'UCgYQ_-hKHVtevMpqaJSHnQw', 'UCC-RHF_77zQdKcA75hr5oTQ']);
     } else {
         scheduler(channels.split(","));
     }
