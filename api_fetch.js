@@ -15,11 +15,11 @@ const arangoPass = fs.readFileSync('./.arangoPass', 'utf8');
 
 // Initialise the database variable
 //TODO: Change accordingly for ginkgo
-db = new Database('http://127.0.0.1:8529');
-db.useBasicAuth("root", arangoPass);
+db = new Database('http+tcp://127.0.0.1:8529');
+db.useBasicAuth("root@Youtube", arangoPass);
 
 //TODO: Change accordingly for ginkgo, this also potentially goes for the 'Channels/' part in the save[...] functions
-db.useDatabase('testBase');
+db.useDatabase('Youtube');
 const channelCollectionName = 'Channels';
 channelCollection = db.collection(channelCollectionName);
 subsCollection = db.collection('subscribed_by');
