@@ -1056,29 +1056,29 @@ async function scheduler(seedUsers) {
 
 //McClure: UCNm8WjumwijTwIVmCOLi0KQ
 
-try {
-    let channels = fs.readFileSync("./RemainingChannels.txt", 'utf-8');
-    let pageTokens = fs.readFileSync("./CommentPageTokens.txt", 'utf-8');
-
-    //Debug Part
-    channels = "";
-    pageTokens = "";
-
-    if (pageTokens !== "") {
-        commentThreadPages = mapFromStringList(pageTokens.split(","));
-    }
-
-    if (channels === "") {
-        scheduler(['UChGJGhZ9SOOHvBB0Y4DOO_w', 'UCHa-hWHrTt4hqh-WiHry3Lw', 'UCfXI3c8AWF3smkqRM2Iiaxw', 'UCXa9irCtpM1t4l2cPuBKcQg', 'UC4pDKMzp7BMUrj1vxPqIMCw', 'UCNm8WjumwijTwIVmCOLi0KQ', 'UCMDoGQEBNf-yBnUXugkjSYA', 'UC6sSkkemzPjmrzS0Y0V_2zw', 'UCZsDDuoeSVgpgy3zWLAhArw', 'UCwlHYiYchPT-xcJquyBbvRQ', 'UCDKN0w9ZvbFED0nUbBPLV6A', 'UCgYQ_-hKHVtevMpqaJSHnQw', 'UCC-RHF_77zQdKcA75hr5oTQ']);
-    } else {
-        scheduler(channels.split(","));
-    }
-
-} catch (err) {
-    console.log(err);
-    fs.writeFileSync("./RemainingChannels.txt", channelQueue.toString(), "utf-8");
-    fs.writeFileSync("./CommentPageTokens.txt", mapToString(commentThreadPages), "utf-8");
-}
+// try {
+//     let channels = fs.readFileSync("./RemainingChannels.txt", 'utf-8');
+//     let pageTokens = fs.readFileSync("./CommentPageTokens.txt", 'utf-8');
+//
+//     //Debug Part
+//     channels = "";
+//     pageTokens = "";
+//
+//     if (pageTokens !== "") {
+//         commentThreadPages = mapFromStringList(pageTokens.split(","));
+//     }
+//
+//     if (channels === "") {
+//         scheduler(['UChGJGhZ9SOOHvBB0Y4DOO_w', 'UCHa-hWHrTt4hqh-WiHry3Lw', 'UCfXI3c8AWF3smkqRM2Iiaxw', 'UCXa9irCtpM1t4l2cPuBKcQg', 'UC4pDKMzp7BMUrj1vxPqIMCw', 'UCNm8WjumwijTwIVmCOLi0KQ', 'UCMDoGQEBNf-yBnUXugkjSYA', 'UC6sSkkemzPjmrzS0Y0V_2zw', 'UCZsDDuoeSVgpgy3zWLAhArw', 'UCwlHYiYchPT-xcJquyBbvRQ', 'UCDKN0w9ZvbFED0nUbBPLV6A', 'UCgYQ_-hKHVtevMpqaJSHnQw', 'UCC-RHF_77zQdKcA75hr5oTQ']);
+//     } else {
+//         scheduler(channels.split(","));
+//     }
+//
+// } catch (err) {
+//     console.log(err);
+//     fs.writeFileSync("./RemainingChannels.txt", channelQueue.toString(), "utf-8");
+//     fs.writeFileSync("./CommentPageTokens.txt", mapToString(commentThreadPages), "utf-8");
+// }
 
 
 {
@@ -1229,8 +1229,8 @@ try {
 //     console.log('Connected');
 // })
 
-// waitForDatabaseConnection().then(function () {
-//     console.log('Connected to Database');
-// });
+ waitForDatabaseConnection().then(function () {
+     console.log('Connected to Database');
+ });
 
 
