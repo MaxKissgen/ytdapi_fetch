@@ -74,7 +74,7 @@ let channelQueue = new Queue();
 let unlikelyChildQueue = new Queue();
 
 
-//Map to store page tokens
+// Map to store page tokens
 let commentThreadPages = new Map();
 
 function mapToString(map) {
@@ -606,6 +606,7 @@ async function waitForDatabaseConnection() {
 //TODO: Better handling for unexpected errors and errors while saving objects
 //TODO: Maybe don't add already saved Channels to Queue, or multiplicity can still be used as collecting more followers from that influencer
 //TODO: Maybe further decide decide on page range
+//TODO: Test new comment filter
 async function scheduler(seedUsers) {
     channelQueue.items = seedUsers;
     let saveCounter = 0;
@@ -726,6 +727,7 @@ async function scheduler(seedUsers) {
             // If the channel has been visited before, then some comment pages will already exist in the Database, so jump forward to the unsaved ones
             if (commentThreadPages.has(channel[1][0].id) === true) {
                 nextPage = commentThreadPages.get(channel[1][0].id);
+                console.log('Moving on from nextPageToken: ' + nextPage);
             }
 
             // Try to collect some pages with each up to 50 commentThreads related to the channel and, when quota exceeded, try again the next day
@@ -784,6 +786,9 @@ async function scheduler(seedUsers) {
                 commentThreadPages.set(channel[1][0].id, nextPage);
             }
 
+            // List for already saved comments
+            let alreadySavedCommentChannelIds = [];
+
             // Save the top level comments of those threads
             for (let i = 0; i < commentThreads.data.items.length; i++) {
                 try {
@@ -791,6 +796,11 @@ async function scheduler(seedUsers) {
                 } catch (err) {
                     if (err.code === 409 && err.errorNum === 1210) { // Conflicting keys, meaning comment exists already
                         console.log("Comment was already saved");
+                        if (commentThreads.data.items[i].snippet.topLevelComment.snippet.authorChannelId !== undefined) {
+                            if(alreadySavedCommentChannelIds.includes(commentThreads.data.items[i].snippet.topLevelComment.snippet.authorChannelId.value) === false) {
+                                alreadySavedCommentChannelIds.push(commentThreads.data.items[i].snippet.topLevelComment.snippet.authorChannelId.value);
+                            }
+                        }
                     } else if (err.code === 'ECONNREFUSED') {
                         await waitForDatabaseConnection();
                         i--;
@@ -800,11 +810,15 @@ async function scheduler(seedUsers) {
                 }
             }
 
-            // Add Comment authers to channelQueue
+            // Add Comment authors to channelQueue
             const authorChannels = collectChannelIdsFromComments(commentThreads);
 
             for (let x of authorChannels) {
-                channelQueue.enqueue(x);
+                // Filter out self mentions and already saved comments
+                if(x !== channel[1][0].id && alreadySavedCommentChannelIds.includes(x) === false)
+                {
+                    channelQueue.enqueue(x);
+                }
             }
 
             console.log("Comments done");
@@ -872,7 +886,7 @@ async function scheduler(seedUsers) {
                     }
                 }
 
-                //Save the favourites and add them to th queue
+                //Save the favourites and add them to the queue
                 for (let i = 0; i < favoritedVideos.data.items.length; i++) {
                     try {
                         channelQueue.enqueue(favoritedVideos.data.items[i].snippet.channelId);
