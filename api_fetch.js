@@ -511,10 +511,22 @@ function waitUntilNextDay() {
 
     console.log('Waiting until the quota is full again');
 
+    // Wait until the next UTC day
     while (date.getUTCDay() === currDay) {
         date = new Date();
     }
-
+    // After a new UTC day has started, we have to wait another 7 hours for the PST day to start since that is when the quota resets, we wait an extra one just to be sure
+    date = new Date();
+    let waitedHours = 0;
+    let currHours = date.getUTCHours();
+    while(waitedHours <= 7) {
+        date = new Date();
+        if(currHours !== date.getUTCHours()) // An hour has passed if true
+        {
+            waitedHours++;
+            currHours = date.getUTCHours();
+        }
+    }
 }
 
 //Check for Connection to Youtube Data API through collecting Ryan's World
@@ -1232,5 +1244,3 @@ try {
 // waitForDatabaseConnection().then(function () {
 //     console.log('Connected to Database');
 // });
-
-
