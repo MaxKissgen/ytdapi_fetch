@@ -3,7 +3,7 @@ A script that periodically fetches data from the Youtube Data Api through Node.j
 
 In doing so, it tries to neglect influencers that are not children or channels that don't have children involved. This is by no means perfect and done with some simple regular expressions.
 
-A detailed documentation will be given when the script is in a somewhat final.
+A detailed documentation will be given when the script is in a somewhat final state.
 
 Part of the Bachelor Thesis "Child Influencers within Social Media Communities"
 
