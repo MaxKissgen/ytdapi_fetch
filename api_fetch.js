@@ -16,7 +16,7 @@ const arangoPass = fs.readFileSync('./.arangoPass', 'utf8');
 // Initialise the database variable
 //TODO: Change accordingly for ginkgo
 db = new Database('http+tcp://127.0.0.1:8529');
-db.useBasicAuth("root@Youtube", arangoPass);
+db.useBasicAuth("root", "");
 //TODO: Change accordingly for ginkgo, this also potentially goes for the 'Channels/' part in the save[...] functions
 db.useDatabase('Youtube');
 const channelCollectionName = 'Channels';
@@ -623,7 +623,7 @@ async function scheduler(seedUsers) {
         saveCounter++;
 
         // Debug part here
-        debugCounter++;
+        // debugCounter++;
 
         console.log("Collecting Channel");
 
@@ -1061,8 +1061,8 @@ try {
     let pageTokens = fs.readFileSync("./CommentPageTokens.txt", 'utf-8');
 
     //Debug Part
-    channels = "";
-    pageTokens = "";
+    //channels = "";
+    //pageTokens = "";
 
     if (pageTokens !== "") {
         commentThreadPages = mapFromStringList(pageTokens.split(","));
