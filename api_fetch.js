@@ -344,14 +344,27 @@ async function collectCommentThreads(id, pageToken) {
 }
 
 //TODO: Modify method such that it tries to neglect negative comments
-//TODO: Check what happens if id unavailable, error you dumb fuck
-//Retrieves ChannelIds from comment-threads related to a specific channel
+//Retrieves channelIds from comment-threads related to a specific channel
 function collectChannelIdsFromComments(commentThreads) {
     let channelIDList = [];
     for (let x of commentThreads.data.items) {
         if (x.snippet.topLevelComment.snippet.authorChannelId !== undefined) {
             if (channelIDList.includes(x.snippet.topLevelComment.snippet.authorChannelId.value) === false) {
                 channelIDList.push(x.snippet.topLevelComment.snippet.authorChannelId.value);
+            }
+        }
+    }
+
+    return channelIDList;
+}
+
+//Retrieves uploader channelIds from video-list
+function collectChannelIdsFromVideoInfos(videoInfos) {
+    let channelIDList = [];
+    for (let x of videoInfos.data.items) {
+        if (x.snippet.channelId !== undefined) {
+            if (channelIDList.includes(x.snippet.channelId) === false) {
+                channelIDList.push(x.snippet.channelId);
             }
         }
     }
@@ -519,9 +532,9 @@ function waitUntilNextDay() {
     date = new Date();
     let waitedHours = 0;
     let currHours = date.getUTCHours();
-    while(waitedHours <= 7) {
+    while (waitedHours <= 7) {
         date = new Date();
-        if(currHours !== date.getUTCHours()) // An hour has passed if true
+        if (currHours !== date.getUTCHours()) // An hour has passed if true
         {
             waitedHours++;
             currHours = date.getUTCHours();
@@ -786,9 +799,6 @@ async function scheduler(seedUsers) {
                 commentThreadPages.set(channel[1][0].id, nextPage);
             }
 
-            // List for already saved comments
-            let alreadySavedCommentChannelIds = [];
-
             // Save the top level comments of those threads
             for (let i = 0; i < commentThreads.data.items.length; i++) {
                 try {
@@ -796,11 +806,9 @@ async function scheduler(seedUsers) {
                 } catch (err) {
                     if (err.code === 409 && err.errorNum === 1210) { // Conflicting keys, meaning comment exists already
                         console.log("Comment was already saved");
-                        if (commentThreads.data.items[i].snippet.topLevelComment.snippet.authorChannelId !== undefined) {
-                            if(alreadySavedCommentChannelIds.includes(commentThreads.data.items[i].snippet.topLevelComment.snippet.authorChannelId.value) === false) {
-                                alreadySavedCommentChannelIds.push(commentThreads.data.items[i].snippet.topLevelComment.snippet.authorChannelId.value);
-                            }
-                        }
+
+                        // Remove channelId from comment so that channelIds don't get added to the queue through already saved comments
+                        commentThreads.data.items[i].snippet.topLevelComment.snippet.authorChannelId = undefined;
                     } else if (err.code === 'ECONNREFUSED') {
                         await waitForDatabaseConnection();
                         i--;
@@ -814,9 +822,8 @@ async function scheduler(seedUsers) {
             const authorChannels = collectChannelIdsFromComments(commentThreads);
 
             for (let x of authorChannels) {
-                // Filter out self mentions and already saved comments
-                if(x !== channel[1][0].id && alreadySavedCommentChannelIds.includes(x) === false)
-                {
+                // Filter out self mentions
+                if (x !== channel[1][0].id) {
                     channelQueue.enqueue(x);
                 }
             }
@@ -886,14 +893,16 @@ async function scheduler(seedUsers) {
                     }
                 }
 
-                //Save the favourites and add them to the queue
+                //Save the favourites
                 for (let i = 0; i < favoritedVideos.data.items.length; i++) {
                     try {
-                        channelQueue.enqueue(favoritedVideos.data.items[i].snippet.channelId);
                         await saveFavorite(channel[1][0].id, favoritedVideos.data.items[i]);
                     } catch (err) {
                         if (err.code === 409 && err.errorNum === 1210) { //Conflicting keys, meaning channel exists already
                             console.log("Favourite was already saved");
+
+                            // Remove channelId from video so that channelIds don't get added to the queue through already saved favourites
+                            favoritedVideos.data.items[i].snippet.channelId = undefined;
                         } else if (err.code === 'ECONNREFUSED') {
                             await waitForDatabaseConnection();
                             i--;
@@ -902,7 +911,19 @@ async function scheduler(seedUsers) {
                         }
                     }
                 }
+
+                //List of favourited channelIds
+                let uploaderChannels = collectChannelIdsFromVideoInfos(favoritedVideos);
+
+                // Add favorited channelIds to queue
+                for (let x of uploaderChannels) {
+                    // Filter out self mentions
+                    if (x !== channel[1][0].id) {
+                        channelQueue.enqueue(x);
+                    }
+                }
             }
+
             console.log('Favorites done');
 
         }
@@ -945,8 +966,8 @@ async function scheduler(seedUsers) {
             for (let i = 0; i < subscriptions.data.items.length; i++) {
                 //console.log("Saving Subscription " + x.id);
                 try {
-                    channelQueue.enqueue(subscriptions.data.items[i].snippet.resourceId.channelId);
                     await saveSubscription(subscriptions.data.items[i]);
+                    channelQueue.enqueue(subscriptions.data.items[i].snippet.resourceId.channelId);
                 } catch (err) {
                     if (err.code === 409 && err.errorNum === 1210) { //Conflicting keys, meaning subscription exists already
                         console.log("Subscription was already saved");
@@ -971,7 +992,7 @@ async function scheduler(seedUsers) {
         }
 
         // Debug Wait
-        if (debugCounter === 800) {
+        if (debugCounter === 5) {
             console.log('Stop tests');
             waitUntilNextDay();
         }
@@ -1081,6 +1102,8 @@ async function scheduler(seedUsers) {
 //UCfXI3c8AWF3smkqRM2Iiaxw,UC4pDKMzp7BMUrj1vxPqIMCw,UCNm8WjumwijTwIVmCOLi0KQ,UCMDoGQEBNf-yBnUXugkjSYA
 
 //McClure: UCNm8WjumwijTwIVmCOLi0KQ
+// Self favoriting person: UCumttzRvENB4ECoDd7Uuzow
+//list: ['UChGJGhZ9SOOHvBB0Y4DOO_w', 'UCHa-hWHrTt4hqh-WiHry3Lw', 'UCfXI3c8AWF3smkqRM2Iiaxw', 'UCXa9irCtpM1t4l2cPuBKcQg', 'UC4pDKMzp7BMUrj1vxPqIMCw', 'UCNm8WjumwijTwIVmCOLi0KQ', 'UCMDoGQEBNf-yBnUXugkjSYA', 'UC6sSkkemzPjmrzS0Y0V_2zw', 'UCZsDDuoeSVgpgy3zWLAhArw', 'UCwlHYiYchPT-xcJquyBbvRQ', 'UCDKN0w9ZvbFED0nUbBPLV6A', 'UCgYQ_-hKHVtevMpqaJSHnQw', 'UCC-RHF_77zQdKcA75hr5oTQ']
 
 try {
     let channels = fs.readFileSync("./RemainingChannels.txt", 'utf-8');
