@@ -1002,7 +1002,8 @@ async function scheduler(seedUsers) {
         //Fill with less "interesting" influencers if out of potential children or only-subscribers
         if (channelQueue.isEmpty() === true && unlikelyChildQueue.isEmpty() === false) {
             console.log('Retrieving from unlikelyChildQueue');
-            channelQueue.enqueue(unlikelyChildQueue.front());
+            channelQueue.enqueue(unlikelyChildQueue.front())
+            unlikelyChildQueue.dequeue();
         }
     }
 }
