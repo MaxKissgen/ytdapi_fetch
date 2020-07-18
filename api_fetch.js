@@ -639,7 +639,7 @@ async function scheduler(seedUsers) {
 
 
     // Debug parts here
-    console.log(channelQueue.toString());
+    //console.log(channelQueue.toString());
     let debugCounter = 0;
 
     while (channelQueue.length !== 0) {
