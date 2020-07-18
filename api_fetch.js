@@ -374,7 +374,6 @@ function collectChannelIdsFromVideoInfos(videoInfos) {
 
 // Saves a channel in the database. Pretty much just takes the channel JSON object and cleans it up a bit
 async function saveChannel(channel) {
-
     const key = channel[1][0].id;
     const contentDetails = {
         relatedPlaylists:
@@ -384,11 +383,19 @@ async function saveChannel(channel) {
             }
     };
 
+    const statistics = {
+        viewCount: parseInt(channel[1][0].statistics.viewCount),
+        commentCount: parseInt(channel[1][0].statistics.commentCount),
+        subscriberCount: parseInt(channel[1][0].statistics.subscriberCount),
+        hiddenSubscriberCount: channel[1][0].statistics.hiddenSubscriberCount,
+        videoCount: parseInt(channel[1][0].statistics.videoCount),
+    };
+
     let doc =
         {
             _key: key,
             contentDetails: contentDetails,
-            statistics: channel[1][0].statistics
+            statistics: statistics
         };
 
 
@@ -421,7 +428,7 @@ async function saveChannel(channel) {
                 _key: key,
                 snippet: snippet,
                 contentDetails: contentDetails,
-                statistics: channel[1][0].statistics,
+                statistics: statistics,
                 topicDetails: topicDetails,
                 status: status
             };
@@ -462,7 +469,7 @@ async function saveFavorite(channelId, favoritedVideo) {
         _key: channelId + favoritedVideo.id + favoritedVideo.snippet.channelId,
         _from: channelCollectionName + '/' + favoritedVideo.snippet.channelId,
         _to: channelCollectionName + '/' + channelId,
-        videoId: favoritedVideo.id,
+        videoID: favoritedVideo.id,
         videoTitle: favoritedVideo.snippet.title,
         videoTags: favoritedVideo.snippet.tags
     };
@@ -480,7 +487,7 @@ async function saveLike(channelId, likedVideo) {
         _key: channelId + likedVideo.id + likedVideo.snippet.channelId,
         _from: channelCollectionName + '/' + likedVideo.snippet.channelId,
         _to: channelCollectionName + '/' + channelId,
-        videoId: likedVideo.id
+        videoID: likedVideo.id
     };
 
     await likesCollection.save(doc).then(
@@ -677,6 +684,7 @@ async function scheduler(seedUsers) {
 
         // Don't collect channel when already collected
         if (channelAlready === false) {
+            let notFound = false;
             // Try to collect the channel and, when quota exceeded, try again the next day
             for (let i = 0; i < 1; i++) {
                 try {
@@ -688,10 +696,28 @@ async function scheduler(seedUsers) {
                     } else if (err.code === 'ENOTFOUND') {
                         await waitForConnection();
                         i--;
+                    } else if (err.code === 400 || err.code === 404) {
+                        channelQueue.dequeue();
+
+                        console.log('Channel not found, skipping');
+
+                        //Fill with less "interesting" influencers if out of potential children or only-subscribers
+                        if (channelQueue.isEmpty() === true && unlikelyChildQueue.isEmpty() === false) {
+                            console.log('Retrieving from unlikelyChildQueue');
+                            channelQueue.enqueue(unlikelyChildQueue.front())
+                            unlikelyChildQueue.dequeue();
+                        }
+
+                        notFound = true;
                     } else {
                         console.log(err)
                     }
                 }
+            }
+
+            // Skip if channel not found
+            if (notFound === true) {
+                continue;
             }
 
             // Try to save the channel
@@ -966,8 +992,10 @@ async function scheduler(seedUsers) {
             for (let i = 0; i < subscriptions.data.items.length; i++) {
                 //console.log("Saving Subscription " + x.id);
                 try {
-                    await saveSubscription(subscriptions.data.items[i]);
-                    channelQueue.enqueue(subscriptions.data.items[i].snippet.resourceId.channelId);
+                    await saveSubscription(subscriptions.data.items[i])
+                    if (subscriptions.data.items[i].snippet.resourceId.channelId !== undefined) {
+                        channelQueue.enqueue(subscriptions.data.items[i].snippet.resourceId.channelId);
+                    }
                 } catch (err) {
                     if (err.code === 409 && err.errorNum === 1210) { //Conflicting keys, meaning subscription exists already
                         console.log("Subscription was already saved");
