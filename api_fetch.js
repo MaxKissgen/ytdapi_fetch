@@ -15,7 +15,7 @@ const arangoPass = fs.readFileSync('./.arangoPass', 'utf8');
 
 // Initialise the database variable
 //TODO: Change accordingly for ginkgo
-db = new Database('http+tcp://127.0.0.1:8529');
+db = new Database('http+tcp://webocd.dbis.rwth-aachen.de:8529');
 db.useBasicAuth("root", "");
 //TODO: Change accordingly for ginkgo, this also potentially goes for the 'Channels/' part in the save[...] functions
 db.useDatabase('Youtube');
@@ -691,7 +691,7 @@ async function scheduler(seedUsers) {
                     channel = await collectChannel(channelQueue.front());
                 } catch (err) {
                     if (err.code === 403 && err.errors[0].reason === "quotaExceeded") {
-                        waitUntilNextDay();
+			waitUntilNextDay();
                         i--;
                     } else if (err.code === 'ENOTFOUND') {
                         await waitForConnection();
